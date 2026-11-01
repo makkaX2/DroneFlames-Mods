@@ -92,18 +92,23 @@ func cleanup_mod(mod_mgr: Node) -> void:
 # ХУКИ ИГРОВОГО ПРОЦЕССА И НАСТРОЙКИ СЦЕНАРИЕВ
 # ==============================================================================
 
+func _get_scenario_idx() -> int:
+	return selected_scenario
+
+func _on_scenario_selected(i: int) -> void:
+	selected_scenario = i
+	if _scenario_hint_label != null and is_instance_valid(_scenario_hint_label):
+		_scenario_hint_label.text = "★ " + SCENARIO_HINTS[selected_scenario]
+
 func _on_setup_menu(menus: Node, vb: VBoxContainer) -> void:
 	if menus == null or vb == null or not is_instance_valid(menus):
 		return
 	
 	if menus.has_method("_selector"):
 		menus.call("_selector", vb, "СЦЕНАРИЙ", SCENARIO_NAMES, 
-			func() -> int: return selected_scenario, 
-			func(i: int) -> void:
-				selected_scenario = i
-				if _scenario_hint_label != null and is_instance_valid(_scenario_hint_label):
-					_scenario_hint_label.text = "★ " + SCENARIO_HINTS[selected_scenario]
-			, 100.0, "si_scenario")
+			Callable(self, "_get_scenario_idx"), 
+			Callable(self, "_on_scenario_selected"), 
+			100.0, "si_scenario")
 	
 	if menus.has_method("_label"):
 		_scenario_hint_label = menus.call("_label", vb, "★ " + SCENARIO_HINTS[selected_scenario], 10, Color(0.95, 0.8, 0.3))
@@ -155,34 +160,71 @@ func _trigger_partition(main: Node, world: Node, drama: Object, diplo: Object, h
 	
 	bots.sort_custom(func(a, b): return a.city_ids.size() > b.city_ids.size())
 	target = bots[0]
-	
 	var old_name: String = target.name
-	var arc: Dictionary = {
-		"id": drama.next_id,
-		"k": 1, # K.PARTITION
-		"a": target.id,
-		"b": -1,
-		"m": [],
-		"side": [],
-		"t0": now,
-		"p": 0.95,
-		"rate": 0.1,
-		"life": 1200.0,
-		"shown": true,
-		"climax": true,
-		"hold": 2,
-		"data": {"dev": true}
-	}
-	drama.next_id += 1
-	drama.arcs.append(arc)
 	
-	if drama.has_method("_partition"):
+	# Если у державы мало городов для раскола, создаем второй город
+	if target.city_ids.size() < 2:
+		var cap_pos: Vector2i = world.cities[target.capital_id].center if target.capital_id >= 0 and target.capital_id < world.cities.size() else Vector2i(world.data.w / 2, world.data.h / 2)
+		var offset: Vector2i = Vector2i(24, 18)
+		if world.data.inside(cap_pos.x + offset.x, cap_pos.y + offset.y):
+			world.found_city(cap_pos + offset, target, City.Kind.TOWN)
+
+	var new_country: Country = null
+	if target.city_ids.size() >= 4 and drama.has_method("_partition"):
+		var arc: Dictionary = {
+			"id": drama.next_id,
+			"k": 1, # K.PARTITION
+			"a": target.id,
+			"b": -1,
+			"m": [],
+			"side": [],
+			"t0": now,
+			"p": 0.95,
+			"rate": 0.1,
+			"life": 1200.0,
+			"shown": true,
+			"climax": true,
+			"hold": 2,
+			"data": {"dev": true}
+		}
+		drama.next_id += 1
+		drama.arcs.append(arc)
 		drama.call("_partition", arc, now)
-	
-	var new_id: int = int(arc.get("b", -1))
-	var new_country = world.country_by_id(new_id) if new_id > 0 else null
-	var new_name: String = new_country.name if new_country != null else "Повстанцы"
-	
+		var new_id: int = int(arc.get("b", -1))
+		if new_id > 0:
+			new_country = world.country_by_id(new_id)
+	else:
+		# Прямой раскол через new_country_from
+		var rebel_cities: Array = [target.city_ids[target.city_ids.size() - 1]]
+		new_country = world.new_country_from(rebel_cities)
+		if new_country != null:
+			target.name = "Северная " + old_name
+			new_country.name = "Южная " + old_name
+			if diplo:
+				var k: String = Diplomacy.key(target.id, new_country.id)
+				diplo.opinion[k] = -60
+				diplo.close_land(target.id, new_country.id)
+				diplo.close_land(new_country.id, target.id)
+			var arc2: Dictionary = {
+				"id": drama.next_id,
+				"k": 1,
+				"a": target.id,
+				"b": new_country.id,
+				"m": [],
+				"side": [],
+				"t0": now,
+				"p": 0.95,
+				"rate": 0.1,
+				"life": 1200.0,
+				"shown": true,
+				"climax": true,
+				"hold": 2,
+				"data": {"old": old_name}
+			}
+			drama.next_id += 1
+			drama.arcs.append(arc2)
+
+	var new_name: String = new_country.name if new_country != null else "Южная " + old_name
 	if hud and hud.has_method("show_toast"):
 		hud.call("show_toast", "⚡ СЦЕНАРИЙ: РАСКОЛ! %s раскололась на Север и Юг (%s)!" % [old_name, new_name])
 
