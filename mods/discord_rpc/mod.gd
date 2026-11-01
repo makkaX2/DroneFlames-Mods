@@ -153,8 +153,8 @@ func _build_ingame_state() -> Dictionary:
 	var world_w: int = 1024
 	var world_h: int = 1024
 	if "data" in world and world.data != null:
-		world_w = int(world.data.width)
-		world_h = int(world.data.height)
+		world_w = int(world.data.w)
+		world_h = int(world.data.h)
 
 	# Map Name
 	var map_name: String = "Обычная"
