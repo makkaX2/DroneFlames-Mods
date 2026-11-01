@@ -1,0 +1,21 @@
+{
+  "catalog_version": 1,
+  "repository": "makkaX2/DroneFlames-Mods",
+  "updated_at": "2026-11-01",
+  "mods": [
+    {
+      "id": "oasis_map",
+      "name": "Карта: Оазис в Пустыне",
+      "version": "1.0.0",
+      "author": "good_boy_irl",
+      "type": "map",
+      "description": "Новый тип карты: бескрайняя песчаная пустыня с плодородными оазисами и богатыми месторождениями ресурсов.",
+      "details": "Добавляет уникальную генерацию карты 'ПУСТЫНЯ' в меню выбора карт перед стартом.\n• 82% песчаных дюн и засушливых каньонов\n• Оазисы вокруг водоёмов с пресной водой и пальмами\n• Стратегические залежи нефти и редких руд\n• Подходит для одиночной игры и мультиплеера",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/oasis_map/icon.png",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/oasis_map/oasis_map.dfmod",
+      "folder_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/oasis_map/",
+      "tags": ["карта", "пустыня", "биом", "оазис"],
+      "min_game_version": "0.33.2"
+    }
+  ]
+}
