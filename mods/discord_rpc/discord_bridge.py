@@ -26,13 +26,13 @@ def is_pid_running(pid: int) -> bool:
     ctypes.windll.kernel32.CloseHandle(h)
     return bool(res and code.value == STILL_ACTIVE)
 
-def connect_discord_pipe():
+def connect_discord_pipe(client_id: str):
     for i in range(10):
         pipe_path = f"\\\\.\\pipe\\discord-ipc-{i}"
         try:
             pipe = open(pipe_path, "r+b", buffering=0)
             # Perform handshake
-            handshake = json.dumps({"v": 1, "client_id": CLIENT_ID}).encode("utf-8")
+            handshake = json.dumps({"v": 1, "client_id": client_id}).encode("utf-8")
             pipe.write(struct.pack("<II", 0, len(handshake)) + handshake)
             h = pipe.read(8)
             if len(h) == 8:
@@ -113,9 +113,11 @@ def main():
                     pass
             sys.exit(0)
 
+        cur_client_id = str(state_data.get("client_id", CLIENT_ID))
+
         # If pipe not connected, attempt connection
         if pipe is None:
-            pipe = connect_discord_pipe()
+            pipe = connect_discord_pipe(cur_client_id)
             if pipe is None:
                 time.sleep(3.0)
                 continue

@@ -20,7 +20,8 @@ function Test-ParentAlive([int]$pidToCheck) {
     }
 }
 
-function Connect-DiscordPipe {
+function Connect-DiscordPipe([string]$idToUse) {
+    if ([string]::IsNullOrWhiteSpace($idToUse)) { $idToUse = $clientId }
     for ($i = 0; $i -lt 10; $i++) {
         $pipeName = "discord-ipc-$i"
         try {
@@ -28,7 +29,7 @@ function Connect-DiscordPipe {
             $pipe.Connect(500)
             
             # Handshake
-            $handshakeJson = "{`"v`":1,`"client_id`":`"$clientId`"}"
+            $handshakeJson = "{`"v`":1,`"client_id`":`"$idToUse`"}"
             $handshakeBytes = [System.Text.Encoding]::UTF8.GetBytes($handshakeJson)
             $header = [System.BitConverter]::GetBytes([int32]0) + [System.BitConverter]::GetBytes([int32]$handshakeBytes.Length)
             $pipe.Write($header, 0, 8)
@@ -121,7 +122,8 @@ while ($true) {
     }
 
     if ($pipe -eq $null) {
-        $pipe = Connect-DiscordPipe
+        $curId = if ($stateData.client_id) { [string]$stateData.client_id } else { $clientId }
+        $pipe = Connect-DiscordPipe $curId
         if ($pipe -eq $null) {
             Start-Sleep -Seconds 3
             continue

@@ -10,11 +10,19 @@ var in_match: bool = false
 var last_main: Node = null
 var last_world: Node = null
 var launch_time: int = 0
+var custom_client_id: String = "1521142415547826177"
 
 func init_mod(mm: Node) -> void:
 	mm_ref = mm
 	launch_time = int(Time.get_unix_time_from_system())
 	match_start_time = launch_time
+
+	# Read custom client_id from settings if configured
+	var cfg = ConfigFile.new()
+	if cfg.load("user://settings.cfg") == OK:
+		var cid = cfg.get_value("discord", "client_id", "")
+		if String(cid).strip_edges() != "":
+			custom_client_id = String(cid).strip_edges()
 
 	# Resolve absolute path for state file
 	state_file_global = ProjectSettings.globalize_path("user://discord_state.json")
@@ -130,7 +138,8 @@ func _build_menu_state() -> Dictionary:
 	var has_save: bool = Save.has_save() if ClassDB.class_exists("Save") or ResourceLoader.exists("res://game/save.gd") else false
 	var state_txt = "Готово сохранение" if has_save else "Выбор режима игры"
 
-	return {
+	var res_dict = {
+		"client_id": custom_client_id,
 		"details": "В главном меню",
 		"state": state_txt,
 		"timestamps": {
@@ -146,6 +155,7 @@ func _build_menu_state() -> Dictionary:
 			{"label": "GitHub Проект", "url": "https://github.com/makkaX2/DroneFlames-PC-Port"}
 		]
 	}
+	return res_dict
 
 func _build_ingame_state() -> Dictionary:
 	var player_name = _get_player_name()
@@ -211,6 +221,7 @@ func _build_ingame_state() -> Dictionary:
 	]
 
 	return {
+		"client_id": custom_client_id,
 		"details": "Мир: %s (%dx%d)" % [map_name, world_w, world_h],
 		"state": state_line,
 		"timestamps": {
