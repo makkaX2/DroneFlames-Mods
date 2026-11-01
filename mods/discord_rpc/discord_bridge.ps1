@@ -27,6 +27,8 @@ function Connect-DiscordPipe([string]$idToUse) {
         try {
             $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
             $pipe.Connect(500)
+            $pipe.ReadTimeout = 2000
+            $pipe.WriteTimeout = 2000
             
             # Handshake
             $handshakeJson = "{`"v`":1,`"client_id`":`"$idToUse`"}"
@@ -69,11 +71,15 @@ function Send-Activity($pipe, $activityObj) {
     $pipe.Flush()
 
     $respHeader = New-Object byte[] 8
-    $read = $pipe.Read($respHeader, 0, 8)
-    if ($read -eq 8) {
-        $respLen = [System.BitConverter]::ToInt32($respHeader, 4)
-        $respBuf = New-Object byte[] $respLen
-        $pipe.Read($respBuf, 0, $respLen) | Out-Null
+    try {
+        $read = $pipe.Read($respHeader, 0, 8)
+        if ($read -eq 8) {
+            $respLen = [System.BitConverter]::ToInt32($respHeader, 4)
+            $respBuf = New-Object byte[] $respLen
+            $pipe.Read($respBuf, 0, $respLen) | Out-Null
+        }
+    } catch {
+        # timeout or disconnect
     }
 }
 
@@ -137,7 +143,11 @@ while ($true) {
         if ($stateData.state) { $act["state"] = [string]$stateData.state }
         if ($stateData.timestamps) { $act["timestamps"] = $stateData.timestamps }
         if ($stateData.assets) { $act["assets"] = $stateData.assets }
-        if ($stateData.buttons) { $act["buttons"] = $stateData.buttons }
+        if ($stateData.buttons) {
+            $bList = New-Object System.Collections.ArrayList
+            foreach ($b in $stateData.buttons) { [void]$bList.Add($b) }
+            $act["buttons"] = $bList
+        }
 
         try {
             Send-Activity $pipe $act
@@ -150,5 +160,5 @@ while ($true) {
         }
     }
 
-    Start-Sleep -Milliseconds 1500
+    Start-Sleep -Seconds 1
 }

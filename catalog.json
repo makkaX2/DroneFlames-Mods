@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 7,
   "last_updated": "2026-11-01",
   "repository": "makkaX2/DroneFlames-Mods",
   "mods": [
@@ -50,6 +50,30 @@
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/scenarios_pack/scenarios_pack.dfmod",
       "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/scenarios_pack/scenarios_pack.dfmod",
       "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/scenarios_pack/icon.png"
+    },
+    {
+      "id": "tank_factory",
+      "name": "Завод бронетехники и танков",
+      "version": "1.0.0",
+      "author": "good_boy_irl",
+      "type": "gameplay",
+      "description": "Полноценный военно-промышленный завод бронетехники: строительство танковых заводов на карте (клавиша B), серийный выпуск ОБТ Т-90М, БМП-3, САУ «Мста-С» и РСЗО «Град» с анимацией выезда из цеха и единым интерфейсом игры.",
+      "archive": "tank_factory.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/tank_factory/tank_factory.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/tank_factory/tank_factory.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/tank_factory/icon.png"
+    },
+    {
+      "id": "atgm_cluster",
+      "name": "Кассетные боеприпасы для ПТРК",
+      "version": "1.0.0",
+      "author": "good_boy_irl",
+      "type": "gameplay",
+      "description": "Тактические кассетные боеприпасы для ПТРК (клавиша K): разделение ракеты на подлёте, выброска 8 кумулятивно-осколочных суббоеприпасов и сокрушительный каскадный удар по скоплениям бронетехники и укреплениям.",
+      "archive": "atgm_cluster.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/atgm_cluster.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/atgm_cluster.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/icon.png"
     }
   ]
 }

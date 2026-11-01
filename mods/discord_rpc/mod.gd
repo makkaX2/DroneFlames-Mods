@@ -30,7 +30,8 @@ func init_mod(mm: Node) -> void:
 	# Write initial menu state immediately
 	_write_state(_build_menu_state())
 
-	# Launch bridge background process
+	# Ensure bridge scripts exist in user:// and launch bridge
+	_ensure_bridge_scripts()
 	_launch_bridge()
 
 	# Register game hooks
@@ -69,7 +70,7 @@ func cleanup_mod(mm: Node) -> void:
 
 	print("[DiscordRPC] Mod cleaned up.")
 
-func _launch_bridge() -> void:
+func _ensure_bridge_scripts() -> void:
 	var base_folder: String = ""
 	var scr = get_script()
 	if scr:
@@ -77,20 +78,53 @@ func _launch_bridge() -> void:
 	if base_folder == "":
 		base_folder = "res://mods/discord_rpc"
 
-	var py_bridge = ProjectSettings.globalize_path(base_folder.path_join("discord_bridge.py"))
-	var ps_bridge = ProjectSettings.globalize_path(base_folder.path_join("discord_bridge.ps1"))
+	# Copy discord_bridge.py to user:// if accessible from base_folder
+	var py_src = base_folder.path_join("discord_bridge.py")
+	if FileAccess.file_exists(py_src):
+		var src_file = FileAccess.open(py_src, FileAccess.READ)
+		if src_file:
+			var content = src_file.get_as_text()
+			src_file.close()
+			var dst_file = FileAccess.open("user://discord_bridge.py", FileAccess.WRITE)
+			if dst_file:
+				dst_file.store_string(content)
+				dst_file.close()
+
+	var ps_src = base_folder.path_join("discord_bridge.ps1")
+	if FileAccess.file_exists(ps_src):
+		var src_file = FileAccess.open(ps_src, FileAccess.READ)
+		if src_file:
+			var content = src_file.get_as_text()
+			src_file.close()
+			var dst_file = FileAccess.open("user://discord_bridge.ps1", FileAccess.WRITE)
+			if dst_file:
+				dst_file.store_string(content)
+				dst_file.close()
+
+func _launch_bridge() -> void:
+	var py_bridge = ProjectSettings.globalize_path("user://discord_bridge.py")
+	var ps_bridge = ProjectSettings.globalize_path("user://discord_bridge.ps1")
 	var parent_pid_str = str(OS.get_process_id())
 
-	# Prefer Python bridge if available
-	var py_exit = OS.execute("python", ["--version"], [], false)
-	if py_exit == 0 and FileAccess.file_exists(base_folder.path_join("discord_bridge.py")):
-		bridge_pid = OS.create_process("python", [py_bridge, state_file_global, parent_pid_str])
-		if bridge_pid > 0:
-			print("[DiscordRPC] Launched Python bridge (PID %d)" % bridge_pid)
-			return
+	# Python candidates to try
+	var py_candidates: Array = [
+		"pythonw",
+		"python",
+		"C:\\Users\\mxka\\AppData\\Local\\Programs\\Python\\Python314\\pythonw.exe",
+		"C:\\Users\\mxka\\AppData\\Local\\Programs\\Python\\Python314\\python.exe"
+	]
+
+	for exe in py_candidates:
+		var out_arr: Array = []
+		var test_code = OS.execute(exe, ["--version"], out_arr, false)
+		if test_code == 0 and FileAccess.file_exists("user://discord_bridge.py"):
+			bridge_pid = OS.create_process(exe, [py_bridge, state_file_global, parent_pid_str])
+			if bridge_pid > 0:
+				print("[DiscordRPC] Launched Python bridge using '%s' (PID %d)" % [exe, bridge_pid])
+				return
 
 	# Fallback to PowerShell bridge
-	if FileAccess.file_exists(base_folder.path_join("discord_bridge.ps1")):
+	if FileAccess.file_exists("user://discord_bridge.ps1"):
 		bridge_pid = OS.create_process("powershell.exe", [
 			"-NoProfile",
 			"-WindowStyle", "Hidden",
@@ -130,11 +164,6 @@ func _check_in_match() -> bool:
 	# If Main indicates we are in the main menu, we are not playing
 	if "in_menu" in last_main and bool(last_main.in_menu):
 		return false
-
-	# In active match, Main.hud is visible; in main menu it is hidden (visible = false)
-	if "hud" in last_main and last_main.hud != null and is_instance_valid(last_main.hud):
-		if not last_main.hud.visible:
-			return false
 
 	# Check world and world data
 	if last_world == null or not is_instance_valid(last_world):
@@ -266,6 +295,9 @@ func _build_ingame_state() -> Dictionary:
 				var cap_obj = world.cities[cid]
 				if cap_obj != null and is_instance_valid(cap_obj) and "name" in cap_obj:
 					capital_name = String(cap_obj.name).strip_edges()
+
+	if capital_name != "" and cities_count == 0:
+		cities_count = 1
 
 	# Units count
 	var armies_count: int = 0
