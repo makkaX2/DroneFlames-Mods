@@ -105,6 +105,47 @@ func _launch_bridge() -> void:
 
 	print("[DiscordRPC] Warning: Could not launch bridge process.")
 
+func _find_main_and_world() -> void:
+	if last_main == null or not is_instance_valid(last_main):
+		if mm_ref != null and is_instance_valid(mm_ref):
+			var tree = mm_ref.get_tree()
+			if tree != null and tree.root != null:
+				var m = tree.root.get_node_or_null("Main")
+				if m != null:
+					last_main = m
+				else:
+					for child in tree.root.get_children():
+						if "world" in child and "menus" in child:
+							last_main = child
+							break
+	if last_main != null and is_instance_valid(last_main):
+		if "world" in last_main and last_main.world != null and is_instance_valid(last_main.world):
+			last_world = last_main.world
+
+func _check_in_match() -> bool:
+	_find_main_and_world()
+	if last_main == null or not is_instance_valid(last_main):
+		return false
+
+	# If Main indicates we are in the main menu, we are not playing
+	if "in_menu" in last_main and bool(last_main.in_menu):
+		return false
+
+	# In active match, Main.hud is visible; in main menu it is hidden (visible = false)
+	if "hud" in last_main and last_main.hud != null and is_instance_valid(last_main.hud):
+		if not last_main.hud.visible:
+			return false
+
+	# Check world and world data
+	if last_world == null or not is_instance_valid(last_world):
+		return false
+	if not ("data" in last_world and last_world.data != null):
+		return false
+	if "w" in last_world.data and int(last_world.data.w) <= 0:
+		return false
+
+	return true
+
 func _on_world_started(main: Node, world: Node) -> void:
 	last_main = main
 	last_world = world
@@ -118,11 +159,14 @@ func _on_match_tick(main: Node, world: Node, _delta: float) -> void:
 	in_match = true
 
 func _on_timer_tick() -> void:
-	# Check if we are in game or in menu
-	if last_main != null and is_instance_valid(last_main):
-		if "menus" in last_main and last_main.menus != null:
-			if last_main.menus.visible:
-				in_match = false
+	var currently_playing: bool = _check_in_match()
+	if currently_playing:
+		if not in_match:
+			in_match = true
+			match_start_time = int(Time.get_unix_time_from_system())
+	else:
+		in_match = false
+
 	_update_presence()
 
 func _update_presence() -> void:
@@ -162,14 +206,14 @@ func _build_ingame_state() -> Dictionary:
 	var world = last_world
 	var world_w: int = 1024
 	var world_h: int = 1024
-	if "data" in world and world.data != null:
-		world_w = int(world.data.w)
-		world_h = int(world.data.h)
+	if world != null and "data" in world and world.data != null:
+		if "w" in world.data: world_w = int(world.data.w)
+		if "h" in world.data: world_h = int(world.data.h)
 
 	# Map Name
 	var map_name: String = "Обычная"
 	var mt_idx: int = 0
-	if "settings" in world and world.settings != null:
+	if world != null and "settings" in world and world.settings != null and "map_type" in world.settings:
 		mt_idx = int(world.settings.map_type)
 	
 	var standard_names: Array = ["Обычная", "Архипелаг", "Острова", "Материки"]
@@ -187,43 +231,84 @@ func _build_ingame_state() -> Dictionary:
 
 	# Player Country Stats
 	var player_country: Country = null
-	if "countries" in world and world.countries is Array:
-		for c in world.countries:
-			if c != null and is_instance_valid(c) and c.is_player:
-				player_country = c
-				break
+	if world != null:
+		if "player" in world and world.player != null and is_instance_valid(world.player):
+			player_country = world.player
+		elif "countries" in world and world.countries is Array:
+			for c in world.countries:
+				if c != null and is_instance_valid(c) and "is_player" in c and c.is_player:
+					player_country = c
+					break
 
 	var cities_count: int = 0
 	var wars_count: int = 0
 	var treasury: int = 0
 	var score: int = 0
-	var country_name: String = "Гегемон"
+	var country_name: String = "Моя страна"
+	var capital_name: String = ""
 
-	if player_country != null:
-		cities_count = player_country.city_ids.size()
-		wars_count = player_country.at_war.size()
-		treasury = player_country.money
-		score = player_country.score
-		if player_country.name != "":
-			country_name = player_country.name
+	if player_country != null and is_instance_valid(player_country):
+		if "city_ids" in player_country and player_country.city_ids != null:
+			cities_count = player_country.city_ids.size()
+		if "at_war" in player_country and player_country.at_war != null:
+			wars_count = player_country.at_war.size()
+		if "money" in player_country:
+			treasury = int(player_country.money)
+		if "score" in player_country:
+			score = int(player_country.score)
+		if "name" in player_country and String(player_country.name).strip_edges() != "":
+			country_name = String(player_country.name).strip_edges()
+
+		# Capital city name
+		if "capital_id" in player_country and int(player_country.capital_id) >= 0:
+			var cid = int(player_country.capital_id)
+			if world != null and "cities" in world and world.cities is Array and cid < world.cities.size():
+				var cap_obj = world.cities[cid]
+				if cap_obj != null and is_instance_valid(cap_obj) and "name" in cap_obj:
+					capital_name = String(cap_obj.name).strip_edges()
 
 	# Units count
 	var armies_count: int = 0
-	if "army" in world and world.army != null and "units" in world.army:
-		for u in world.army.units:
-			if u != null and is_instance_valid(u) and u.hp > 0:
-				if player_country != null and u.country_id == player_country.id:
-					armies_count += 1
+	if world != null and "army" in world and world.army != null and is_instance_valid(world.army):
+		if "units" in world.army and world.army.units is Array:
+			for u in world.army.units:
+				if u != null and is_instance_valid(u) and "hp" in u and u.hp > 0:
+					if player_country != null and "country_id" in u and u.country_id == player_country.id:
+						armies_count += 1
+
+	# Check if paused
+	var is_paused: bool = false
+	if last_main != null and is_instance_valid(last_main):
+		if "_paused" in last_main and bool(last_main._paused):
+			is_paused = true
+		elif "menus" in last_main and last_main.menus != null and is_instance_valid(last_main.menus):
+			if last_main.menus.has_method("is_open") and last_main.menus.is_open() and "current" in last_main.menus and last_main.menus.current == "pause":
+				is_paused = true
 
 	var cash_str = _format_cash(treasury)
-	var state_line = "Городов: %d | Армий: %d | Войн: %d | Казна: %s | Очки: %d" % [
-		cities_count, armies_count, wars_count, cash_str, score
+
+	# Details string (max 128 chars)
+	var details_str = "Мир: %s (%dx%d)" % [map_name, world_w, world_h]
+	if capital_name != "":
+		details_str = "Мир: %s • Столица: %s" % [map_name, capital_name]
+
+	# State string (max 128 chars)
+	var prefix = "[Пауза] " if is_paused else ""
+	var state_str = prefix + "Городов: %d | Армий: %d | Войн: %d | Казна: %s" % [
+		cities_count, armies_count, wars_count, cash_str
 	]
+	if cities_count == 0 and capital_name == "":
+		state_str = prefix + "Основание столицы..."
+
+	# Small text (hovering over avatar icon)
+	var small_txt = "%s (%s) • Счёт: %d" % [country_name, player_name, score]
+	if country_name == player_name:
+		small_txt = "%s • Счёт: %d" % [player_name, score]
 
 	return {
 		"client_id": custom_client_id,
-		"details": "Мир: %s (%dx%d)" % [map_name, world_w, world_h],
-		"state": state_line,
+		"details": details_str.left(120),
+		"state": state_str.left(120),
 		"timestamps": {
 			"start": match_start_time
 		},
@@ -231,7 +316,7 @@ func _build_ingame_state() -> Dictionary:
 			"large_image": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/assets/droneflames_logo.png",
 			"large_text": "DroneFlames (PC Port by @good_boy_irl)",
 			"small_image": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/assets/profile_avatar.png",
-			"small_text": "Профиль: %s (%s)" % [player_name, country_name]
+			"small_text": small_txt.left(120)
 		},
 		"buttons": [
 			{"label": "GitHub Проект", "url": "https://github.com/makkaX2/DroneFlames-PC-Port"}
@@ -246,6 +331,11 @@ func _write_state(dict: Dictionary) -> void:
 		f.close()
 
 func _get_player_name() -> String:
+	if last_main != null and is_instance_valid(last_main):
+		if "world" in last_main and last_main.world != null and is_instance_valid(last_main.world):
+			if "player" in last_main.world and last_main.world.player != null and is_instance_valid(last_main.world.player):
+				if last_main.world.player.name != "":
+					return last_main.world.player.name
 	var cfg = ConfigFile.new()
 	if cfg.load("user://settings.cfg") == OK:
 		var n = cfg.get_value("prefs", "my_name", "")
