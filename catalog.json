@@ -1,8 +1,20 @@
 {
-  "version": 4,
+  "version": 5,
   "last_updated": "2026-11-01",
   "repository": "makkaX2/DroneFlames-Mods",
   "mods": [
+    {
+      "id": "airborne_assault",
+      "name": "Воздушный Десант (ВДВ)",
+      "version": "1.0.0",
+      "author": "good_boy_irl",
+      "type": "gameplay",
+      "description": "Тактический воздушный десант: вертолётная высадка штурмовых групп прямо на поле боя (клавиша H) и парашютная выброска роты ВДВ с военно-транспортных самолётов (клавиша J). Кнопка на панели управления.",
+      "archive": "airborne_assault.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/airborne_assault/airborne_assault.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/airborne_assault/airborne_assault.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/airborne_assault/icon.png"
+    },
     {
       "id": "discord_rpc",
       "name": "Discord Rich Presence",
