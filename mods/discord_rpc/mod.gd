@@ -10,7 +10,7 @@ var in_match: bool = false
 var last_main: Node = null
 var last_world: Node = null
 var launch_time: int = 0
-var custom_client_id: String = "1521142415547826177"
+var custom_client_id: String = "1566515978806759500"
 
 func init_mod(mm: Node) -> void:
 	mm_ref = mm

@@ -8,7 +8,7 @@ param(
     [Parameter(Mandatory=$false)][int]$ParentPid = 0
 )
 
-$clientId = "1521142415547826177"
+$clientId = "1566515978806759500"
 
 function Test-ParentAlive([int]$pidToCheck) {
     if ($pidToCheck -le 0) { return $true }

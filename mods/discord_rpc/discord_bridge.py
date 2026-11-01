@@ -11,7 +11,7 @@ import json
 import struct
 import ctypes
 
-CLIENT_ID = "1521142415547826177"
+CLIENT_ID = "1566515978806759500"
 
 def is_pid_running(pid: int) -> bool:
     if pid <= 0:
