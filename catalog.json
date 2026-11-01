@@ -1,8 +1,20 @@
 {
-  "version": 3,
+  "version": 4,
   "last_updated": "2026-11-01",
   "repository": "makkaX2/DroneFlames-Mods",
   "mods": [
+    {
+      "id": "discord_rpc",
+      "name": "Discord Rich Presence",
+      "version": "1.0.0",
+      "author": "good_boy_irl",
+      "type": "utility",
+      "description": "Полноценная интеграция с Discord: отображает время игры, название карты, размер мира, режим и сохранение, статистику (города, армии, войны, казна, очки), большой логотип игры и тактический профиль игрока.",
+      "archive": "discord_rpc.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/discord_rpc/discord_rpc.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/discord_rpc/discord_rpc.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/discord_rpc/icon.png"
+    },
     {
       "id": "oasis_map",
       "name": "Карта: Оазис в Пустыне",
