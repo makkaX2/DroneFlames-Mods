@@ -12,6 +12,7 @@
       "description": "Уникальный засушливый ландшафт: бескрайние песчаные дюны, скалистые каньоны, богатые залежи нефти и редкие зеленые оазисы вокруг озер и рек.",
       "archive": "oasis_map.dfmod",
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/oasis_map/oasis_map.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/oasis_map/oasis_map.dfmod",
       "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/oasis_map/icon.png"
     },
     {
@@ -23,6 +24,7 @@
       "description": "Исправляет проблему с переключением полноэкранного режима по клавише F11 и Alt+Enter, устраняет двойной клик и мгновенный возврат в оконный режим.",
       "archive": "fix_f11.dfmod",
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/fix_f11/fix_f11.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/fix_f11/fix_f11.dfmod",
       "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/fix_f11/icon.png"
     }
   ]
