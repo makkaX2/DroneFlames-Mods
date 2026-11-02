@@ -1,15 +1,15 @@
 {
-  "version": 7,
+  "version": 9,
   "last_updated": "2026-11-01",
   "repository": "makkaX2/DroneFlames-Mods",
   "mods": [
     {
       "id": "airborne_assault",
-      "name": "Воздушный Десант (ВДВ)",
-      "version": "1.0.0",
+      "name": "Воздушный Десант (ВДВ) — Спецназ",
+      "version": "1.2.1",
       "author": "good_boy_irl",
       "type": "gameplay",
-      "description": "Тактический воздушный десант: вертолётная высадка штурмовых групп прямо на поле боя (клавиша H) и парашютная выброска роты ВДВ с военно-транспортных самолётов (клавиша J). Кнопка на панели управления.",
+      "description": "Штаб ВДВ и десант. Прямое управление отрядами (ЛКМ/ПКМ), кнопка [ШТУРМ] в штабе и автономное развитие наступления от города к городу со снабжением.",
       "archive": "airborne_assault.dfmod",
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/airborne_assault/airborne_assault.dfmod",
       "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/airborne_assault/airborne_assault.dfmod",
@@ -54,10 +54,10 @@
     {
       "id": "tank_factory",
       "name": "Завод бронетехники и танков",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "good_boy_irl",
       "type": "gameplay",
-      "description": "Полноценный военно-промышленный завод бронетехники: строительство танковых заводов на карте (клавиша B), серийный выпуск ОБТ Т-90М, БМП-3, САУ «Мста-С» и РСЗО «Град» с анимацией выезда из цеха и единым интерфейсом игры.",
+      "description": "Военно-промышленный завод бронетехники, встроенный во вкладку «АРМИЯ» нижней панели: постройка на карте, карточка строения, выпуск ОБТ Т-90М, БМП-3, САУ «Мста-С» и ТОС-1А «Солнцепёк».",
       "archive": "tank_factory.dfmod",
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/tank_factory/tank_factory.dfmod",
       "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/tank_factory/tank_factory.dfmod",
@@ -66,14 +66,38 @@
     {
       "id": "atgm_cluster",
       "name": "Кассетные боеприпасы для ПТРК",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "good_boy_irl",
       "type": "gameplay",
-      "description": "Тактические кассетные боеприпасы для ПТРК (клавиша K): разделение ракеты на подлёте, выброска 8 кумулятивно-осколочных суббоеприпасов и сокрушительный каскадный удар по скоплениям бронетехники и укреплениям.",
+      "description": "Тактические кассетные боеприпасы для расчётов ПТРК, встроенные в панель доктрин армии: на подлёте к цели ракета разделяется на 6 суббоеприпасов для удара по площади и скоплениям врага.",
       "archive": "atgm_cluster.dfmod",
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/atgm_cluster.dfmod",
       "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/atgm_cluster.dfmod",
       "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/icon.png"
+    },
+    {
+      "id": "nuclear_strike",
+      "name": "Ядерный арсенал (МБР и Шахты)",
+      "version": "1.1.0",
+      "author": "good_boy_irl",
+      "type": "gameplay",
+      "description": "Шахтный комплекс МБР в нижней панели армии: производство ядерных боеголовок из урановых запасов, пуск стратегической баллистической ракеты и разрушительный термоядерный удар.",
+      "archive": "nuclear_strike.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/nuclear_strike/nuclear_strike.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/nuclear_strike/nuclear_strike.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/nuclear_strike/icon.png"
+    },
+    {
+      "id": "city_expansion",
+      "name": "Расширение и развитие городов",
+      "version": "1.0.0",
+      "author": "good_boy_irl",
+      "type": "gameplay",
+      "description": "Ручное развитие городов: расширение городских границ и кварталов, строительство жилых районов, укрепление гарнизона и модернизация городской инфраструктуры.",
+      "archive": "city_expansion.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/city_expansion/city_expansion.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/city_expansion/city_expansion.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/city_expansion/icon.png"
     }
   ]
 }

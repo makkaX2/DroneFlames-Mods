@@ -1,830 +1,1630 @@
 class_name AirborneAssaultMod
 extends RefCounted
 
-## Мод «Воздушный Десант (ВДВ)» для DroneFlames PC Port
-## Автор: @good_boy_irl
-## Полноценная интеграция в игровой процесс:
-## - Постройка «БАЗА ВДВ» через вкладку «УДАР» нижнего бара (1 200 $)
-## - Карточка постройки в стиле игры с действиями [ МИ-8 1000$ ] и [ ИЛ-76 2800$ ]
-## - Тактическая высадка штурмовиков на тросах с вертолёта Ми-8
-## - Массовый парашютный сброс десанта и техники БМД с самолёта Ил-76
+## Мод «Воздушный Десант (ВДВ) — Спецназ и Тактическая Авиация» для DroneFlames PC Port
+## Полная интеграция в оригинальный интерфейс и движок игры.
+## Добавляет слот постройки «ШТАБ ВДВ» во вкладку «АРМИЯ» в нижней панели.
+## Требует электроэнергию (ТЭС/АЭС/СЭС), производит и готовит к вылету
+## вертолёты Ми-8 «Терминатор» (тактическая высадка на тросах с зависания)
+## и тяжёлые десантные самолёты Ил-76 (выброска БМД-4 и спецназа на парашютах).
+## ПРЯМОЕ УПРАВЛЕНИЕ:
+## - ЛКМ по бойцам ВДВ на карте — выделение отряда
+## - ПКМ по карте/городу — приказ движения или штурма выбранным бойцам
+## - Кнопка [ПРИКАЗ ВДВ / НАСТУПЛЕНИЕ] в карточке штаба — общее наступление всех групп
+## АВТОНОМНЫЙ ИИ КАМПАНИИ:
+## - После взятия города отряд лечится, пополняет бойцов и АВТОМАТИЧЕСКИ развивает наступление
+##   на следующий вражеский город или военную базу (никогда не встаёт намертво)!
 
 var mm_ref: Node = null
 var main_ref: Node = null
 var world_ref: Node = null
 
-var overlay_node: Node2D = null
+var world_layer: Node2D = null
 
-# Состояние базы и режимов
-var bases: Array = []
-var is_placing_base: bool = false
-var hover_cell: Vector2i = Vector2i(-1, -1)
+# Размещение нового штаба ВДВ
+var is_placing_hq: bool = false
+var selected_hq: Facility = null
 
-# Режим целеуказания для десанта: 0 = Нет, 1 = Вертолёт Ми-8, 2 = Самолёт Ил-76
-var targeting_mode: int = 0
-var targeting_base: Facility = null
-var target_hover_pos: Vector2 = Vector2.ZERO
+# Режим целеуказания для вылета: "" (нет), "mi8" (вертолёт), "il76" (самолёт), "vdv_order_all" (общий штурм)
+var targeting_op: String = ""
+var targeting_fac: Facility = null
 
-var active_ops: Array = []
-var last_card_key: String = ""
-var last_card_cd: int = -1
+# Активные вертолёты и самолёты в воздухе
+var active_helis: Array = []
+var active_planes: Array = []
+var active_parachutes: Array = []
+
+# Выбранный в воздухе вертолёт
+var selected_heli: Object = null
+
+# Список зарегистрированных бойцов ВДВ на земле и текущий выделенный игроком отряд
+var active_vdv_troops: Array = []
+var selected_vdv_troops: Array = []
+
+# Таймер пополнений и лечения в освобождённых городах
+var vdv_city_restock_t: float = 0.0
+var last_reported_capture: String = ""
+
+# Стоимости и параметры
+const HQ_COST_MONEY: int = 1400
+const HQ_COST_METAL: int = 15
+const HQ_SIZE: Vector2i = Vector2i(6, 4)
+const HQ_MAX_HP: float = 450.0
+
+const MI8_COST_MONEY: int = 950
+const MI8_COST_METAL: int = 6
+const MI8_PREP_TIME: float = 14.0
+const MI8_MAX_LIMIT: int = 2
+
+const IL76_COST_MONEY: int = 2200
+const IL76_COST_METAL: int = 14
+const IL76_PREP_TIME: float = 24.0
+const IL76_MAX_LIMIT: int = 1
 
 func init_mod(mm: Node) -> void:
 	mm_ref = mm
+	_create_and_register_icons(mm)
 	if mm.has_method("register_hook"):
 		mm.call("register_hook", "on_world_started", Callable(self, "_on_world_started"))
 		mm.call("register_hook", "on_match_tick", Callable(self, "_on_match_tick"))
-	print("[AirborneAssault] Mod initialized.")
+	print("[AirborneAssault] Native VDV mod initialized.")
 
 func cleanup_mod(mm: Node) -> void:
 	_cleanup_nodes()
-	if mm and mm.has_method("unregister_hook"):
-		mm.call("unregister_hook", "on_world_started", Callable(self, "_on_world_started"))
-		mm.call("unregister_hook", "on_match_tick", Callable(self, "_on_match_tick"))
+	if mm != null:
+		if mm.has_method("unregister_texture"):
+			mm.call("unregister_texture", "icon_vdv_hq")
+			mm.call("unregister_texture", "icon_mi8")
+			mm.call("unregister_texture", "icon_il76")
+			mm.call("unregister_texture", "icon_vdv_desant")
+		if mm.has_method("unregister_hook"):
+			mm.call("unregister_hook", "on_world_started", Callable(self, "_on_world_started"))
+			mm.call("unregister_hook", "on_match_tick", Callable(self, "_on_match_tick"))
 	print("[AirborneAssault] Mod cleaned up.")
 
 func _cleanup_nodes() -> void:
-	is_placing_base = false
-	targeting_mode = 0
-	targeting_base = null
-	active_ops.clear()
-	bases.clear()
-	if overlay_node != null and is_instance_valid(overlay_node):
-		overlay_node.queue_free()
-		overlay_node = null
+	is_placing_hq = false
+	selected_hq = null
+	targeting_op = ""
+	targeting_fac = null
+	selected_heli = null
+	active_helis.clear()
+	active_planes.clear()
+	active_parachutes.clear()
+	active_vdv_troops.clear()
+	selected_vdv_troops.clear()
+	last_reported_capture = ""
+	if world_layer != null and is_instance_valid(world_layer):
+		world_layer.queue_free()
+		world_layer = null
 
 func _on_world_started(main: Node, world: Node) -> void:
 	main_ref = main
 	world_ref = world
 	_cleanup_nodes()
 
-	# In-world overlay node
-	overlay_node = AirborneAssaultOverlay.new()
-	overlay_node.setup(self, main, world)
-	world.add_child(overlay_node)
+	# 1. Встраивание слота постройки в нативную вкладку «АРМИЯ» (Tab 4)
+	if main.hud != null:
+		if main.hud.pages.size() > 4:
+			var army_grid = main.hud.pages[4] as GridContainer
+			if army_grid != null and not main.hud.keys.has("airborne_hq"):
+				var cell = main.hud._cell("airborne_hq", "icon_vdv_hq", true)
+				if main.hud.key_labels.has("airborne_hq"):
+					var lbl = main.hud.key_labels["airborne_hq"] as Label
+					if lbl != null:
+						lbl.text = "ШТАБ ВДВ"
+				army_grid.add_child(cell)
+				army_grid.move_child(cell, 2)
 
-	# Connect to HUD action signal
-	if main != null and "hud" in main and main.hud != null:
-		var hud = main.hud
-		if not hud.action.is_connected(_on_hud_action):
-			hud.action.connect(_on_hud_action)
-		_inject_hud_button()
+		# Подключение к сигналу действий HUD
+		if not main.hud.action.is_connected(_on_hud_action):
+			main.hud.action.connect(_on_hud_action)
 
-	print("[AirborneAssault] World started, overlay attached.")
+	# 2. Слой мира для отображения сетки постройки, вертолётов, тросов, парашютов и выделения
+	world_layer = AirborneAssaultWorldLayer.new()
+	world_layer.setup(self, main, world)
+	world.add_child(world_layer)
 
-func _inject_hud_button() -> void:
-	if main_ref == null or not is_instance_valid(main_ref) or main_ref.hud == null:
+	print("[AirborneAssault] Injected airborne_hq into Army tab. World layer attached.")
+
+# ==============================================================================
+# Генерация аутентичных пиксельных иконок для интерфейса игры
+# ==============================================================================
+func _create_and_register_icons(mm: Node) -> void:
+	if mm == null or not mm.has_method("register_texture"):
 		return
-	var hud = main_ref.hud
-	if hud.keys.has("airborne_base"):
-		return
 
-	# Add button to tab 2 (УДАР)
-	if hud.pages.size() > 2:
-		var grid = hud.pages[2]
-		if grid != null and is_instance_valid(grid):
-			var cell_box = hud._cell("airborne_base", "icon_heli", true)
-			grid.add_child(cell_box)
-			if hud.key_labels.has("airborne_base"):
-				hud.key_labels["airborne_base"].text = "БАЗА ВДВ"
+	# 1. Иконка Штаба ВДВ (вертолётная площадка с буквой H и шевроном)
+	var img_hq = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	img_hq.fill(Color(0, 0, 0, 0))
+	for y in range(4, 28):
+		for x in range(4, 28):
+			var d = Vector2(x - 15.5, y - 15.5).length()
+			if d <= 12.0:
+				if d >= 10.5:
+					img_hq.set_pixel(x, y, Color(0.9, 0.75, 0.2, 1.0))
+				else:
+					img_hq.set_pixel(x, y, Color(0.14, 0.16, 0.18, 0.95))
+	for y in range(9, 23):
+		for x in range(11, 14):
+			img_hq.set_pixel(x, y, Color(0.95, 0.85, 0.3, 1.0))
+		for x in range(18, 21):
+			img_hq.set_pixel(x, y, Color(0.95, 0.85, 0.3, 1.0))
+	for y in range(14, 18):
+		for x in range(14, 18):
+			img_hq.set_pixel(x, y, Color(0.95, 0.85, 0.3, 1.0))
+	for i in range(5):
+		img_hq.set_pixel(6 + i, 6 + i, Color(0.2, 0.8, 1.0, 0.9))
+		img_hq.set_pixel(25 - i, 6 + i, Color(0.2, 0.8, 1.0, 0.9))
+	mm.call("register_texture", "icon_vdv_hq", ImageTexture.create_from_image(img_hq))
 
-func _on_hud_action(action_name: String) -> void:
-	match action_name:
-		"airborne_base":
-			toggle_base_placement()
-		"ab_heli":
-			if main_ref != null and main_ref.selected_fac != null and main_ref.selected_fac.get_meta("is_airborne_base", false):
-				start_targeting(1, main_ref.selected_fac)
-		"ab_plane":
-			if main_ref != null and main_ref.selected_fac != null and main_ref.selected_fac.get_meta("is_airborne_base", false):
-				start_targeting(2, main_ref.selected_fac)
-		"ab_demolish":
-			if main_ref != null and main_ref.selected_fac != null and main_ref.selected_fac.get_meta("is_airborne_base", false):
-				demolish_base(main_ref.selected_fac)
+	# 2. Иконка вертолёта Ми-8
+	var img_mi8 = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	img_mi8.fill(Color(0, 0, 0, 0))
+	for x in range(3, 29):
+		img_mi8.set_pixel(x, 7, Color(0.75, 0.82, 0.9, 0.85))
+	for y in range(8, 11):
+		img_mi8.set_pixel(15, y, Color(0.4, 0.45, 0.5, 1.0))
+		img_mi8.set_pixel(16, y, Color(0.4, 0.45, 0.5, 1.0))
+	for y in range(11, 19):
+		for x in range(8, 22):
+			img_mi8.set_pixel(x, y, Color(0.24, 0.34, 0.28, 1.0))
+	for y in range(12, 17):
+		for x in range(6, 10):
+			img_mi8.set_pixel(x, y, Color(0.25, 0.75, 0.95, 1.0))
+	for y in range(13, 16):
+		for x in range(22, 28):
+			img_mi8.set_pixel(x, y, Color(0.24, 0.34, 0.28, 1.0))
+	for y in range(9, 19):
+		img_mi8.set_pixel(28, y, Color(0.9, 0.6, 0.1, 0.95))
+	img_mi8.set_pixel(10, 20, Color(0.15, 0.15, 0.15, 1.0))
+	img_mi8.set_pixel(11, 20, Color(0.15, 0.15, 0.15, 1.0))
+	img_mi8.set_pixel(18, 20, Color(0.15, 0.15, 0.15, 1.0))
+	img_mi8.set_pixel(19, 20, Color(0.15, 0.15, 0.15, 1.0))
+	mm.call("register_texture", "icon_mi8", ImageTexture.create_from_image(img_mi8))
+
+	# 3. Иконка транспортного самолёта Ил-76
+	var img_il76 = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	img_il76.fill(Color(0, 0, 0, 0))
+	for y in range(4, 28):
+		for x in range(14, 18):
+			img_il76.set_pixel(x, y, Color(0.7, 0.75, 0.8, 1.0))
+	img_il76.set_pixel(15, 3, Color(0.2, 0.7, 0.95, 1.0))
+	img_il76.set_pixel(16, 3, Color(0.2, 0.7, 0.95, 1.0))
+	for x in range(3, 29):
+		var y_w = 14 + int(abs(x - 15.5) * 0.35)
+		for dy in range(3):
+			img_il76.set_pixel(x, y_w + dy, Color(0.55, 0.62, 0.68, 1.0))
+	for eng_x in [7, 11, 20, 24]:
+		for y in range(16, 20):
+			img_il76.set_pixel(eng_x, y, Color(0.2, 0.22, 0.25, 1.0))
+	for x in range(10, 22):
+		for y in range(26, 28):
+			img_il76.set_pixel(x, y, Color(0.65, 0.7, 0.76, 1.0))
+	mm.call("register_texture", "icon_il76", ImageTexture.create_from_image(img_il76))
+
+	# 4. Иконка воздушного десанта
+	var img_desant = Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	img_desant.fill(Color(0, 0, 0, 0))
+	for y in range(4, 13):
+		for x in range(6, 26):
+			var dy = float(y - 4) / 9.0
+			var dx = abs(float(x - 15.5) / 10.0)
+			if dx * dx + dy * dy <= 1.0:
+				if x % 4 < 2:
+					img_desant.set_pixel(x, y, Color(0.95, 0.95, 0.95, 1.0))
+				else:
+					img_desant.set_pixel(x, y, Color(0.25, 0.65, 0.9, 1.0))
+	for i in range(7):
+		var t = float(i) / 6.0
+		img_desant.set_pixel(int(lerpf(7.0, 15.5, t)), int(lerpf(13.0, 21.0, t)), Color(0.8, 0.8, 0.8, 0.7))
+		img_desant.set_pixel(int(lerpf(24.0, 15.5, t)), int(lerpf(13.0, 21.0, t)), Color(0.8, 0.8, 0.8, 0.7))
+	for y in range(21, 27):
+		for x in range(14, 18):
+			img_desant.set_pixel(x, y, Color(0.2, 0.35, 0.22, 1.0))
+	img_desant.set_pixel(15, 21, Color(0.2, 0.7, 0.9, 1.0))
+	img_desant.set_pixel(16, 21, Color(0.2, 0.7, 0.9, 1.0))
+	mm.call("register_texture", "icon_vdv_desant", ImageTexture.create_from_image(img_desant))
+
+# ==============================================================================
+# Обработка действий нативного интерфейса игры
+# ==============================================================================
+func _on_hud_action(nm: String) -> void:
+	match nm:
+		"airborne_hq":
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.show_tip(
+					"Штаб ВДВ и вертолётная база",
+					"Тактическая авиабаза сил быстрого реагирования. Готовит вертолёты Ми-8 для точечной высадки спецназа и самолёты Ил-76 для сброса техники БМД. 1400 $ · металл 15. Требует электричество.",
+					""
+				)
+			toggle_hq_placement()
+
+		"vdv_prep_mi8":
+			if selected_hq != null:
+				_order_preparation(selected_hq, "mi8")
+
+		"vdv_launch_mi8":
+			if selected_hq != null:
+				_start_targeting(selected_hq, "mi8")
+
+		"vdv_prep_il76":
+			if selected_hq != null:
+				_order_preparation(selected_hq, "il76")
+
+		"vdv_launch_il76":
+			if selected_hq != null:
+				_start_targeting(selected_hq, "il76")
+
+		"vdv_order_storm":
+			if selected_hq != null:
+				_start_targeting(selected_hq, "vdv_order_all")
+
+		"vdv_repair":
+			if selected_hq != null:
+				_repair_hq(selected_hq)
+
+		"vdv_demolish":
+			if selected_hq != null:
+				_demolish_hq(selected_hq)
 
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
 
-	# Ensure HUD button exists
-	_inject_hud_button()
+	_tick_hqs(delta)
+	_tick_helis(delta)
+	_tick_planes(delta)
+	_tick_parachutes(delta)
+	_tick_vdv_ai(delta)
 
-	# Tick cooldowns for all bases
-	for i in range(bases.size() - 1, -1, -1):
-		var b = bases[i]
-		if b == null or not is_instance_valid(b) or not world.mil.alive(b):
-			bases.remove_at(i)
-			continue
-		var cd = float(b.get_meta("cooldown_left", 0.0))
-		if cd > 0.0:
-			b.set_meta("cooldown_left", maxf(0.0, cd - delta))
-
-	# Tick aircraft operations
-	_tick_operations(delta)
-
-	# Update bottom card if airborne base is selected
-	if main.selected_fac != null and is_instance_valid(main.selected_fac) and main.selected_fac.get_meta("is_airborne_base", false):
-		_update_base_card(main.selected_fac)
+	# Обновление нативной карточки здания внизу экрана, если выбран наш штаб ВДВ
+	if main != null and "selected_fac" in main and main.selected_fac != null and is_instance_valid(main.selected_fac):
+		var f: Facility = main.selected_fac as Facility
+		if f != null and f.has_meta("is_vdv_hq") and f.get_meta("is_vdv_hq"):
+			selected_hq = f
+			_update_native_card(f)
+		else:
+			if selected_hq != null and selected_hq == f:
+				selected_hq = null
 	else:
-		last_card_key = ""
+		selected_hq = null
 
-	if overlay_node != null and is_instance_valid(overlay_node):
-		overlay_node.queue_redraw()
+	if world_layer != null and is_instance_valid(world_layer):
+		world_layer.queue_redraw()
 
 # ==============================================================================
-# ПОСТРОЙКА БАЗЫ ВДВ
+# Режим строительства Штаба ВДВ
 # ==============================================================================
-
-func toggle_base_placement() -> void:
-	if is_placing_base:
-		cancel_base_placement()
+func toggle_hq_placement() -> void:
+	if is_placing_hq:
+		cancel_hq_placement()
 	else:
-		start_base_placement()
+		start_hq_placement()
 
-func start_base_placement() -> void:
-	is_placing_base = true
-	cancel_targeting()
-	if main_ref != null and main_ref.has_method("_deselect"):
-		main_ref._deselect()
-	if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-		main_ref.hud.set_hint("БАЗА ВДВ (1 200 $): ВЫБЕРИТЕ МЕСТО НА СВОЕЙ ЗЕМЛЕ (ТАП ДЛЯ ПОСТРОЙКИ)")
-		main_ref.hud.set_key_pressed("airborne_base", true)
-	if ClassDB.class_exists("UiKit"):
-		UiKit.snd("ui_click")
-
-func cancel_base_placement() -> void:
-	if is_placing_base:
-		is_placing_base = false
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.set_key_pressed("airborne_base", false)
-			main_ref.hud.set_hint("")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_close")
-
-func is_valid_base_cell(cell: Vector2i) -> bool:
-	if world_ref == null or not is_instance_valid(world_ref) or world_ref.data == null:
-		return false
-	var p = world_ref.player
-	if p == null:
-		return false
-
-	# 2x2 cells footprint
-	for dy in range(2):
-		for dx in range(2):
-			var c = cell + Vector2i(dx, dy)
-			if c.x < 0 or c.y < 0 or c.x >= world_ref.data.w or c.y >= world_ref.data.h:
-				return false
-			# Must be owned by player
-			if world_ref.data.get_owner_id(c.x, c.y) != p.id:
-				return false
-			# Must be land
-			if Biome.is_water(world_ref.data.get_biome(c.x, c.y)):
-				return false
-
-	# Check collision with other facilities
-	for f in world_ref.mil.facilities:
-		if f != null and is_instance_valid(f) and world_ref.mil.alive(f):
-			var r = Rect2i(f.cell, f.size)
-			if r.intersects(Rect2i(cell, Vector2i(2, 2))):
-				return false
-
-	return true
-
-func try_place_base(cell: Vector2i) -> bool:
-	if not is_valid_base_cell(cell):
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("Строить можно только на своей сухопутной территории!")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_error")
-		return false
-
-	var p = world_ref.player
-	if p.money < 1200:
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("Не хватает денег: База ВДВ стоит 1 200 $")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_error")
-		return false
-
-	# Deduct money
-	p.money -= 1200
-
-	# Create Facility
-	var f = Facility.new()
-	f.id = world_ref.mil.facilities.size()
-	f.kind = Facility.Kind.AIRFIELD
-	f.cell = cell
-	f.size = Vector2i(2, 2)
-	f.country_id = p.id
-	f.set_meta("is_airborne_base", true)
-	f.set_meta("cooldown_left", 0.0)
-
-	world_ref.mil.facilities.append(f)
-	bases.append(f)
-
-	if ClassDB.class_exists("UiKit"):
-		UiKit.snd("ui_buy")
-
-	if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-		main_ref.hud.show_toast("База ВДВ построена! Нажмите на неё для высадки десанта.")
-
-	cancel_base_placement()
-
-	# Select the new base immediately
-	if main_ref != null:
-		main_ref.selected_fac = f
-
-	return true
-
-func demolish_base(f: Facility) -> void:
+func start_hq_placement() -> void:
 	if world_ref == null or not is_instance_valid(world_ref):
 		return
 	var p = world_ref.player
-	if p != null:
-		p.money += 900
+	if p == null:
+		return
 
-	bases.erase(f)
+	if p.money < HQ_COST_MONEY or p.metal < HQ_COST_METAL:
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Не хватает ресурсов: 1400 $ и 15 металла!")
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	is_placing_hq = true
+	targeting_op = ""
+	if main_ref != null and main_ref.hud != null:
+		main_ref.hud.set_key_pressed("airborne_hq", true)
+		main_ref.hud.show_toast("ШТАБ ВДВ: Выберите место на своей территории для вертолётной площадки")
+
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_select")
+
+func cancel_hq_placement() -> void:
+	is_placing_hq = false
+	if main_ref != null and main_ref.hud != null:
+		main_ref.hud.set_key_pressed("airborne_hq", false)
+
+func can_place_hq_at(cell: Vector2i) -> bool:
+	if world_ref == null or not is_instance_valid(world_ref):
+		return false
+	var d = world_ref.data
+	if d == null:
+		return false
+
+	if cell.x < 3 or cell.y < 3 or cell.x + HQ_SIZE.x >= d.w - 3 or cell.y + HQ_SIZE.y >= d.h - 3:
+		return false
+
+	var player = world_ref.player
+	if player == null:
+		return false
+
+	for dy in range(HQ_SIZE.y):
+		for dx in range(HQ_SIZE.x):
+			var cx = cell.x + dx
+			var cy = cell.y + dy
+
+			if d.get_owner(cx, cy) != player.id:
+				return false
+
+			var b = d.get_biome(cx, cy)
+			if Biome.is_water(b):
+				return false
+
+			if d.has_flag(cx, cy, WorldData.F_OCCUPIED):
+				return false
+
+	return true
+
+func place_hq_at(cell: Vector2i) -> void:
+	if not can_place_hq_at(cell):
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Нельзя построить здесь: нужна свободная суша на вашей земле")
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	var p = world_ref.player
+	if p.money < HQ_COST_MONEY or p.metal < HQ_COST_METAL:
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Не хватает: 1400 $ и 15 металла!")
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	p.money -= HQ_COST_MONEY
+	p.metal -= HQ_COST_METAL
+
+	var f = Facility.new()
+	f.id = world_ref.mil.facilities.size()
+	f.kind = Facility.Kind.CIV_FACTORY
+	f.country_id = p.id
+	f.cell = cell
+	f.size = HQ_SIZE
+	f.set_meta("is_vdv_hq", true)
+	f.set_meta("hp", HQ_MAX_HP)
+	f.set_meta("max_hp", HQ_MAX_HP)
+	f.set_meta("mi8_ready", 1)
+	f.set_meta("il76_ready", 0)
+	f.set_meta("prep_op", "")
+	f.set_meta("prep_t", 0.0)
+	f.set_meta("prep_dur", 0.0)
+	f.set_meta("active_heli", null)
+	f.set_meta("antenna_t", 0.0)
+
+	f.main_obj = world_ref.add_object("barracks", cell, GameWorld.KIND_BUILDING)
+	f.obj_ids.append(f.main_obj)
+	world_ref.mil.facilities.append(f)
+
+	var d = world_ref.data
+	for dy in range(f.size.y):
+		for dx in range(f.size.x):
+			var cx = cell.x + dx
+			var cy = cell.y + dy
+			world_ref.remove_tree_at(Vector2i(cx, cy))
+			d.add_flag(cx, cy, WorldData.F_OCCUPIED)
+			d.set_biome(cx, cy, Biome.PLAZA)
+
+	cancel_hq_placement()
+
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_build")
+	if world_ref.fx != null:
+		world_ref.fx.spawn("dust_s", Vector2(cell * GameWorld.CELL + Vector2i(18, 12)), 8)
+
+	if main_ref != null and main_ref.hud != null:
+		main_ref.hud.show_toast("Штаб ВДВ и вертолётная площадка готовы к службе!")
+		main_ref.selected_fac = f
+
+# ==============================================================================
+# Жизненный цикл штабов ВДВ (Энергия, подготовка бортов)
+# ==============================================================================
+func _tick_hqs(delta: float) -> void:
+	if world_ref == null or not is_instance_valid(world_ref):
+		return
+	if not ("mil" in world_ref and world_ref.mil != null):
+		return
+
+	for f in world_ref.mil.facilities:
+		if not (f is Facility and f.has_meta("is_vdv_hq") and f.get_meta("is_vdv_hq")):
+			continue
+
+		var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
+
+		var prep_op = String(f.get_meta("prep_op", ""))
+		if prep_op != "":
+			if not is_powered:
+				continue
+
+			var pt = float(f.get_meta("prep_t", 0.0)) + delta
+			var dur = float(f.get_meta("prep_dur", 1.0))
+			f.set_meta("prep_t", pt)
+
+			if pt >= dur:
+				f.set_meta("prep_op", "")
+				f.set_meta("prep_t", 0.0)
+				if prep_op == "mi8":
+					var cur_mi8 = int(f.get_meta("mi8_ready", 0)) + 1
+					f.set_meta("mi8_ready", mini(cur_mi8, MI8_MAX_LIMIT))
+					if main_ref != null and main_ref.hud != null:
+						main_ref.hud.show_toast("Вертолёт Ми-8 «Терминатор» заправлен и готов к вылету!")
+				elif prep_op == "il76":
+					var cur_il76 = int(f.get_meta("il76_ready", 0)) + 1
+					f.set_meta("il76_ready", mini(cur_il76, IL76_MAX_LIMIT))
+					if main_ref != null and main_ref.hud != null:
+						main_ref.hud.show_toast("Самолёт Ил-76 загружен бронетехникой и готов к десанту!")
+
+				if ClassDB.class_exists("UiKit"):
+					UiKit.snd("ui_build")
+
+# ==============================================================================
+# Заказ подготовки авиации и нативная карточка здания
+# ==============================================================================
+func _order_preparation(f: Facility, op_type: String) -> void:
+	var p = world_ref.player
+	var cost_m = 0
+	var cost_met = 0
+	var prep_dur = 0.0
+
+	var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
+	if not is_powered:
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("База обесточена! Для подготовки бортов требуется электроэнергия.")
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	if op_type == "mi8":
+		cost_m = MI8_COST_MONEY
+		cost_met = MI8_COST_METAL
+		prep_dur = MI8_PREP_TIME
+		if int(f.get_meta("mi8_ready", 0)) >= MI8_MAX_LIMIT:
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.show_toast("Достигнут лимит вертолётов Ми-8 на площадке (макс. %d)!" % MI8_MAX_LIMIT)
+			return
+	elif op_type == "il76":
+		cost_m = IL76_COST_MONEY
+		cost_met = IL76_COST_METAL
+		prep_dur = IL76_PREP_TIME
+		if int(f.get_meta("il76_ready", 0)) >= IL76_MAX_LIMIT:
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.show_toast("Достигнут лимит самолётов Ил-76 (макс. %d)!" % IL76_MAX_LIMIT)
+			return
+
+	if p.money < cost_m or p.metal < cost_met:
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Не хватает ресурсов: требуется %d $ и %d металла!" % [cost_m, cost_met])
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	p.money -= cost_m
+	p.metal -= cost_met
+
+	f.set_meta("prep_op", op_type)
+	f.set_meta("prep_t", 0.0)
+	f.set_meta("prep_dur", prep_dur)
+
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_build")
+
+	if main_ref != null and main_ref.hud != null:
+		var name_str = "Ми-8 «Терминатор»" if op_type == "mi8" else "Ил-76 «Десантник»"
+		main_ref.hud.show_toast("Начата подготовка и вооружение: %s" % name_str)
+
+func _start_targeting(f: Facility, op_type: String) -> void:
+	if op_type == "vdv_order_all":
+		if active_vdv_troops.is_empty():
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.show_toast("Нет высаженных бойцов ВДВ! Сначала отправьте вертолёт или самолёт с десантом.")
+			return
+		targeting_op = "vdv_order_all"
+		targeting_fac = f
+		is_placing_hq = false
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_select")
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("ПРИКАЗ ВДВ: Кликните ЛКМ по любой точке или городу на карте для общего наступления!")
+		return
+
+	var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
+	if not is_powered:
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("База обесточена! Вылет невозможен без электроснабжения систем связи.")
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	if op_type == "mi8":
+		if int(f.get_meta("mi8_ready", 0)) <= 0:
+			return
+		if f.get_meta("active_heli") != null:
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.show_toast("Вертолёт уже в воздухе! Дождитесь завершения высадки или возвращения.")
+			return
+	elif op_type == "il76":
+		if int(f.get_meta("il76_ready", 0)) <= 0:
+			return
+
+	if targeting_op == op_type and targeting_fac == f:
+		cancel_targeting()
+		return
+
+	targeting_op = op_type
+	targeting_fac = f
+	is_placing_hq = false
+
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_select")
+
+	if main_ref != null and main_ref.hud != null:
+		var tip = "МИ-8: Выберите точку высадки спецназа на карте (ЛКМ - пуск, ПКМ - отмена)" if op_type == "mi8" else "ИЛ-76: Выберите район парашютного сброса БМД на карте (ЛКМ - пуск, ПКМ - отмена)"
+		main_ref.hud.show_toast(tip)
+
+func cancel_targeting() -> void:
+	targeting_op = ""
+	targeting_fac = null
+
+func _repair_hq(f: Facility) -> void:
+	var p = world_ref.player
+	var rep_cost = 150
+	if p.money < rep_cost:
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Не хватает средств на ремонт штаба: требуется %d $!" % rep_cost)
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
+		return
+
+	p.money -= rep_cost
+	f.set_meta("hp", HQ_MAX_HP)
+
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_build")
+
+	if main_ref != null and main_ref.hud != null:
+		main_ref.hud.show_toast("Штаб ВДВ и площадка полностью отремонтированы!")
+
+func _demolish_hq(f: Facility) -> void:
+	var p = world_ref.player
+	p.money += 700
+
+	var d = world_ref.data
+	for dy in range(f.size.y):
+		for dx in range(f.size.x):
+			var cx = f.cell.x + dx
+			var cy = f.cell.y + dy
+			d.clear_flag(cx, cy, WorldData.F_OCCUPIED)
+
+	if f.main_obj >= 0:
+		world_ref.remove_object(f.main_obj)
+
 	world_ref.mil.facilities.erase(f)
 
 	if main_ref != null:
-		main_ref.selected_fac = null
-		if "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.hide_ops()
-			main_ref.hud.show_toast("База ВДВ демонтирована (+900 $)")
-	if ClassDB.class_exists("UiKit"):
-		UiKit.snd("ui_close")
+		main_ref.call("_deselect")
+		if main_ref.hud != null:
+			main_ref.hud.show_toast("Штаб ВДВ демонтирован (+700 $)")
 
-# ==============================================================================
-# КАРТОЧКА БАЗЫ ВДВ (ПО СТИЛЮ ИГРЫ)
-# ==============================================================================
-
-func _update_base_card(f: Facility) -> void:
-	if main_ref == null or main_ref.hud == null or world_ref == null:
-		return
-	var hud = main_ref.hud
-	var p = world_ref.player
-	if p == null:
-		return
-
-	var cd = float(f.get_meta("cooldown_left", 0.0))
-	var key = "airborne_base_%d" % f.id
-
-	# Only rebuild if something changed
-	if last_card_key != key or last_card_cd != int(cd):
-		last_card_key = key
-		last_card_cd = int(cd)
-
-		var sub = "ГОТОВА К ОПЕРАЦИЯМ · МИ-8 И ИЛ-76"
-		if cd > 0.0:
-			sub = "ПОДГОТОВКА БОРТА: %d С" % int(cd)
-
-		hud._card(key, "icon_heli", "БАЗА ВОЗДУШНОГО ДЕСАНТА (ВДВ)", sub, false, false, true)
-
-		var acts: Array = []
-		var can_heli = (p.money >= 1000 and cd <= 0.0)
-		var can_plane = (p.money >= 2800 and cd <= 0.0)
-
-		acts.append(hud._act("МИ-8\n1000", "icon_heli", "ab_heli", can_heli))
-		acts.append(hud._act("ИЛ-76\n2800", "icon_bomber", "ab_plane", can_plane))
-		var act_dem = hud._act("СНЕСТИ\n900", "icon_demolish" if UiKit.has("icon_demolish") else "icon_close", "ab_demolish", true)
-		act_dem["red"] = true
-		acts.append(act_dem)
-
-		hud.ops_detail.visible = true
-		hud.ops_detail.text = "Ми-8 (1 000 $): высадка на тросах тактической группы (2 штурмовика, 1 ПТРК, 1 FPV-дрон).\nИл-76 (2 800 $): парашютный выброс роты ВДВ (1 БМД, 4 штурмовика, 2 пехоты, 1 миномёт)."
-		hud._set_info("ШТАБ ВДВ: ВЫСАДКА ДЕСАНТА В ТЫЛ ИЛИ НА ФЛАНГ ПРОТИВНИКА", false)
-		hud._fill_acts(key, acts)
-
-# ==============================================================================
-# ЦЕЛЕУКАЗАНИЕ И ЗАПУСК ОПЕРАЦИЙ
-# ==============================================================================
-
-func start_targeting(mode: int, base: Facility) -> void:
-	targeting_mode = mode
-	targeting_base = base
-	cancel_base_placement()
-
-	var mode_name = "ВЕРТОЛЁТ МИ-8 (1 000 $)" if mode == 1 else "САМОЛЁТ ИЛ-76 (2 800 $)"
-	if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-		main_ref.hud.set_hint("%s: ВЫБЕРИТЕ МЕСТО ВЫСАДКИ ДЕСАНТА (ТАП ПО КАРТЕ, ПКМ — ОТМЕНА)" % mode_name)
 	if ClassDB.class_exists("UiKit"):
 		UiKit.snd("ui_click")
 
-func cancel_targeting() -> void:
-	if targeting_mode != 0:
-		targeting_mode = 0
-		targeting_base = null
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.set_hint("")
-			main_ref.hud.show_toast("Операция отменена")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_close")
+# ==============================================================================
+# Отрисовка нативной карточки Штаба ВДВ
+# ==============================================================================
+func _update_native_card(f: Facility) -> void:
+	if main_ref == null or main_ref.hud == null:
+		return
 
-func try_launch_assault(mode: int, base: Facility, world_pos: Vector2) -> bool:
-	if world_ref == null or not is_instance_valid(world_ref):
-		return false
 	var p = world_ref.player
-	if p == null or not is_instance_valid(p):
-		return false
+	var prep_op = String(f.get_meta("prep_op", ""))
+	var prep_t = float(f.get_meta("prep_t", 0.0))
+	var prep_dur = float(f.get_meta("prep_dur", 1.0))
+	var mi8_ready = int(f.get_meta("mi8_ready", 0))
+	var il76_ready = int(f.get_meta("il76_ready", 0))
+	var hp = float(f.get_meta("hp", HQ_MAX_HP))
+	var max_hp = float(f.get_meta("max_hp", HQ_MAX_HP))
 
-	if base == null or not is_instance_valid(base) or not world_ref.mil.alive(base):
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("База ВДВ уничтожена или недоступна!")
-		return false
+	var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
+	var active_heli = f.get_meta("active_heli")
 
-	var cd = float(base.get_meta("cooldown_left", 0.0))
-	if cd > 0.0:
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("Борт готовится к вылету (%d с)" % int(cd))
-		return false
+	main_ref.hud._card(
+		"vdv_hq_%d" % f.id,
+		"icon_vdv_hq",
+		"ШТАБ ВОЗДУШНОГО ДЕСАНТА (ВДВ)",
+		"ВЕРТОЛЁТНАЯ ПЛОЩАДКА И ТАКТИЧЕСКИЙ ДЕСАНТ",
+		false,
+		false,
+		true
+	)
 
-	var cost: int = 1000 if mode == 1 else 2800
-	if p.money < cost:
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("Недостаточно средств в казне! Требуется: %d $" % cost)
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_error")
-		return false
+	var acts: Array = []
 
-	# Check land destination
-	var target = world_pos
-	if world_ref.econ != null and world_ref.econ.has_method("land_point"):
-		target = world_ref.econ.land_point(world_pos, 8)
-
-	if target.distance_to(world_pos) > 65.0:
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("Нельзя десантироваться в открытое море!")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_error")
-		return false
-
-	# Deduct cost and set cooldown
-	p.money -= cost
-	base.set_meta("cooldown_left", 14.0)
-	if ClassDB.class_exists("UiKit"):
-		UiKit.snd("ui_buy")
-
-	if mode == 1:
-		_launch_heli_mission(p.id, base, target)
+	# Кнопка 1: Вертолёт Ми-8 «Терминатор»
+	if mi8_ready > 0:
+		var can_fly = is_powered and active_heli == null
+		acts.append(main_ref.hud._act(
+			"ВЫЛЕТ\nМИ-8 (%d)" % mi8_ready,
+			"icon_mi8",
+			"vdv_launch_mi8",
+			can_fly,
+			1 if targeting_op == "mi8" else 0
+		))
+	elif prep_op == "mi8":
+		acts.append(main_ref.hud._act(
+			"СБОРКА\n%s" % main_ref.hud._mmss(maxf(0.0, prep_dur - prep_t)),
+			"icon_mi8",
+			"",
+			false,
+			1
+		))
 	else:
-		_launch_plane_mission(p.id, base, target)
+		var can_prep = is_powered and p.money >= MI8_COST_MONEY and p.metal >= MI8_COST_METAL and prep_op == ""
+		acts.append(main_ref.hud._act(
+			"МИ-8\n%d $" % MI8_COST_MONEY,
+			"icon_mi8",
+			"vdv_prep_mi8",
+			can_prep,
+			0
+		))
 
-	targeting_mode = 0
-	targeting_base = null
-	if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-		main_ref.hud.set_hint("")
+	# Кнопка 2: Самолёт Ил-76 «Десантник»
+	if il76_ready > 0:
+		acts.append(main_ref.hud._act(
+			"СБРОС\nИЛ-76 (%d)" % il76_ready,
+			"icon_il76",
+			"vdv_launch_il76",
+			is_powered,
+			1 if targeting_op == "il76" else 0
+		))
+	elif prep_op == "il76":
+		acts.append(main_ref.hud._act(
+			"СБОРКА\n%s" % main_ref.hud._mmss(maxf(0.0, prep_dur - prep_t)),
+			"icon_il76",
+			"",
+			false,
+			1
+		))
+	else:
+		var can_prep = is_powered and p.money >= IL76_COST_MONEY and p.metal >= IL76_COST_METAL and prep_op == ""
+		acts.append(main_ref.hud._act(
+			"ИЛ-76\n%d $" % IL76_COST_MONEY,
+			"icon_il76",
+			"vdv_prep_il76",
+			can_prep,
+			0
+		))
 
-	return true
+	# Кнопка 3: Приказ общего наступления для всех бойцов ВДВ в поле
+	if active_vdv_troops.size() > 0:
+		acts.append(main_ref.hud._act(
+			"ШТУРМ\n(%d)" % active_vdv_troops.size(),
+			"icon_vdv_desant",
+			"vdv_order_storm",
+			true,
+			1 if targeting_op == "vdv_order_all" else 0
+		))
 
-func _launch_heli_mission(cid: int, base: Facility, target: Vector2) -> void:
-	var start_pos = base.center_px()
-	var op = {
-		"type": "heli",
-		"country_id": cid,
-		"home_af": base,
-		"home_pos": start_pos,
-		"pos": start_pos,
-		"target_pos": target,
-		"phase": "fly_in",
-		"hover_time": 0.0,
-		"rotor_angle": 0.0,
-		"rotor_frame": 0,
-		"frame": 0,
-		"heading": (target - start_pos).angle(),
-		"troops": [Unit.Type.ASSAULT, Unit.Type.ASSAULT, Unit.Type.ATGM, Unit.Type.FPV],
-		"dropped": 0,
-		"drop_interval": 0.65,
-		"next_drop_t": 0.4
-	}
-	active_ops.append(op)
-	if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-		main_ref.hud.show_toast("Вертолёт Ми-8 с штурмовой группой вылетел с Базы ВДВ!")
+	# Кнопка 4: Ремонт базы
+	var can_rep = hp < max_hp - 1.0 and p.money >= 150
+	acts.append(main_ref.hud._act(
+		"РЕМОНТ\n150 $",
+		"icon_restore",
+		"vdv_repair",
+		can_rep
+	))
 
-func _launch_plane_mission(cid: int, base: Facility, target: Vector2) -> void:
-	var dir = (target - base.center_px()).normalized()
-	if dir.length_squared() < 0.1:
-		dir = Vector2.RIGHT
+	# Кнопка 5: Снос базы
+	var dact = main_ref.hud._act("СНОС\n+700 $", "icon_close", "vdv_demolish", true)
+	dact["red"] = true
+	acts.append(dact)
 
-	var start_p = target - dir * 420.0
-	var end_p = target + dir * 550.0
+	var status_str = ""
+	var is_alert = false
 
-	var types = [
-		Unit.Type.IFV,
-		Unit.Type.ASSAULT,
-		Unit.Type.ASSAULT,
-		Unit.Type.ASSAULT,
-		Unit.Type.ASSAULT,
-		Unit.Type.INFANTRY,
-		Unit.Type.INFANTRY,
-		Unit.Type.MORTAR
-	]
+	if not is_powered:
+		status_str = "ОБЪЕКТ ОБЕСТОЧЕН (НЕТ ЭЛЕКТРОЭНЕРГИИ) · ПРОЧНОСТЬ %d/%d" % [int(hp), int(max_hp)]
+		is_alert = true
+	elif prep_op != "":
+		var op_title = "МИ-8 «ТЕРМИНАТОР»" if prep_op == "mi8" else "ИЛ-76 «ДЕСАНТНИК»"
+		status_str = "ПОДГОТОВКА: %s · ГОТОВНОСТЬ ЧЕРЕЗ %s" % [op_title, main_ref.hud._mmss(maxf(0.0, prep_dur - prep_t))]
+	elif active_heli != null and is_instance_valid(active_heli):
+		status_str = "МИ-8 В ВОЗДУХЕ · СТАТУС: %s" % active_heli.get_status_text()
+	elif active_vdv_troops.size() > 0:
+		status_str = "ДЕЙСТВУЕТ В ПОЛЕ: %d БОЙЦОВ/ТЕХНИКИ · ШТУРМ И ЗАЧИСТКА ТЫЛА" % active_vdv_troops.size()
+	else:
+		status_str = "ГОТОВ К ВЫЛЕТУ · МИ-8: %d/%d · ИЛ-76: %d/%d · ПРОЧНОСТЬ %d/%d" % [
+			mi8_ready, MI8_MAX_LIMIT, il76_ready, IL76_MAX_LIMIT, int(hp), int(max_hp)
+		]
 
-	var paratroopers_list: Array = []
-	for i in types.size():
-		var off = Vector2(randf_range(-24.0, 24.0), randf_range(-18.0, 18.0))
-		var pt = target + off
-		if world_ref.econ != null and world_ref.econ.has_method("land_point"):
-			pt = world_ref.econ.land_point(pt, 6)
-		paratroopers_list.append({
-			"type": types[i],
-			"target": pt,
-			"alt": 42.0 + float(i) * 2.5,
-			"sway": randf() * TAU,
-			"landed": false
-		})
+	main_ref.hud._set_info(status_str, is_alert or hp <= 0.0)
+	main_ref.hud.ops_detail.text = "Штаб ВДВ и тактическая вертолётная площадка. Готовит вертолёты Ми-8 для высадки спецназа на тросах и тяжёлые самолёты Ил-76 для сброса боевых машин БМД-4. Кликните ЛКМ по бойцам на карте и ПКМ по цели для прямого управления, или нажмите [ШТУРМ] в карточке для приказа всем группам. После взятия города отряд автоматически развивает наступление дальше."
+	main_ref.hud.ops_detail.visible = true
+	main_ref.hud._fill_acts("vdv_hq_%d" % f.id, acts)
 
-	var op = {
-		"type": "plane",
-		"country_id": cid,
-		"home_af": base,
-		"pos": start_p,
-		"start_pos": start_p,
-		"end_pos": end_p,
-		"target_pos": target,
-		"dir": dir,
-		"speed": 125.0,
-		"frame": posmod(roundi(rad_to_deg(dir.angle()) / 22.5), 16),
-		"cargo_dropped": false,
-		"paratroopers": paratroopers_list
-	}
-	active_ops.append(op)
-	if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-		main_ref.hud.show_toast("Военно-транспортный Ил-76 поднялся в воздух!")
+# ==============================================================================
+# Запуск операций (Вертолёт Ми-8, Самолёт Ил-76 и Приказ Штурма)
+# ==============================================================================
+func launch_operation_at(target_pos: Vector2) -> void:
+	if targeting_op == "vdv_order_all":
+		order_all_vdv_assault(target_pos)
+		cancel_targeting()
+		return
 
-func _tick_operations(dt: float) -> void:
-	for i in range(active_ops.size() - 1, -1, -1):
-		var op = active_ops[i]
-		if op["type"] == "heli":
-			_tick_heli(op, dt, i)
-		elif op["type"] == "plane":
-			_tick_plane(op, dt, i)
+	if targeting_fac == null or not is_instance_valid(targeting_fac):
+		cancel_targeting()
+		return
 
-func _tick_heli(op: Dictionary, dt: float, idx: int) -> void:
-	op["rotor_angle"] += dt * 35.0
-	op["rotor_frame"] = int(op["rotor_angle"]) % 3
+	var f = targeting_fac
+	if targeting_op == "mi8":
+		var cur_mi8 = int(f.get_meta("mi8_ready", 0))
+		if cur_mi8 <= 0:
+			cancel_targeting()
+			return
+		f.set_meta("mi8_ready", cur_mi8 - 1)
 
-	if op["phase"] == "fly_in":
-		var to_tgt = op["target_pos"] - op["pos"]
-		var dist = to_tgt.length()
-		var spd = 72.0
-		var hd = to_tgt.angle()
-		op["heading"] = hd
-		op["frame"] = posmod(roundi(rad_to_deg(hd) / 22.5), 16)
-		if dist <= spd * dt:
-			op["pos"] = op["target_pos"]
-			op["phase"] = "hover_drop"
-			op["hover_time"] = 0.0
-			if world_ref != null and "fx" in world_ref and world_ref.fx != null:
-				world_ref.fx.spawn("dust_s", op["target_pos"].round(), 5)
-		else:
-			op["pos"] += to_tgt.normalized() * spd * dt
+		var h_pos = Vector2(f.cell * GameWorld.CELL) + Vector2(float(f.size.x * GameWorld.CELL) * 0.5, float(f.size.y * GameWorld.CELL) * 0.5)
+		var heli = VdvHelicopter.new()
+		heli.setup(self, f, h_pos, target_pos)
+		active_helis.append(heli)
+		f.set_meta("active_heli", heli)
 
-	elif op["phase"] == "hover_drop":
-		op["hover_time"] += dt
-		op["pos"].y = op["target_pos"].y + sin(op["hover_time"] * 5.0) * 1.5
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_select")
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Ми-8 поднялся с вертолётной площадки и взял курс на цель!")
 
-		if op["dropped"] < op["troops"].size():
-			if op["hover_time"] >= op["next_drop_t"]:
-				var ut = op["troops"][op["dropped"]]
-				var off = Vector2(randf_range(-10, 10), randf_range(-8, 8))
-				_spawn_unit(op["country_id"], ut, op["target_pos"] + off, op["home_af"])
-				op["dropped"] += 1
-				op["next_drop_t"] += op["drop_interval"]
-		else:
-			if op["hover_time"] >= 3.2:
-				op["phase"] = "fly_out"
-				if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-					main_ref.hud.show_toast("Группа «Вихрь» высадилась! Приступаем к штурму!")
+	elif targeting_op == "il76":
+		var cur_il76 = int(f.get_meta("il76_ready", 0))
+		if cur_il76 <= 0:
+			cancel_targeting()
+			return
+		f.set_meta("il76_ready", cur_il76 - 1)
 
-	elif op["phase"] == "fly_out":
-		var to_home = op["home_pos"] - op["pos"]
-		var dist = to_home.length()
-		var spd = 88.0
-		var hd = to_home.angle()
-		op["heading"] = hd
-		op["frame"] = posmod(roundi(rad_to_deg(hd) / 22.5), 16)
-		if dist <= spd * dt or dist < 12.0:
-			active_ops.remove_at(idx)
-		else:
-			op["pos"] += to_home.normalized() * spd * dt
+		var plane = VdvCargoPlane.new()
+		plane.setup(self, f, target_pos)
+		active_planes.append(plane)
 
-func _tick_plane(op: Dictionary, dt: float, idx: int) -> void:
-	op["pos"] += op["dir"] * op["speed"] * dt
-	var dist_to_tgt = op["pos"].distance_to(op["target_pos"])
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_select")
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Тяжёлый десантный Ил-76 заходит в зону сброса техники!")
 
-	if not op["cargo_dropped"] and (dist_to_tgt <= 25.0 or (op["pos"] - op["target_pos"]).dot(op["dir"]) > 0):
-		op["cargo_dropped"] = true
-		if main_ref != null and "hud" in main_ref and main_ref.hud != null:
-			main_ref.hud.show_toast("Пошёл сброс десанта ВДВ на парашютах!")
+	cancel_targeting()
 
-	var all_landed = true
-	if op["cargo_dropped"]:
-		for p in op["paratroopers"]:
-			if not p["landed"]:
-				all_landed = false
-				p["alt"] -= dt * 14.0
-				p["sway"] += dt * 3.5
-				if p["alt"] <= 0.0:
-					p["alt"] = 0.0
-					p["landed"] = true
-					_spawn_unit(op["country_id"], p["type"], p["target"], op["home_af"])
+func order_all_vdv_assault(target_pos: Vector2) -> void:
+	if active_vdv_troops.is_empty():
+		return
 
-	var to_end = op["end_pos"] - op["pos"]
-	if to_end.dot(op["dir"]) <= 0 and all_landed:
-		active_ops.remove_at(idx)
+	var count = 0
+	for u in active_vdv_troops:
+		if u == null or not is_instance_valid(u) or not ("alive" in u and u.alive()):
+			continue
 
-func _spawn_unit(cid: int, utype: int, pos: Vector2, home_af: Facility) -> Unit:
+		var offset = Vector2.RIGHT.rotated(float(count) * 0.9) * float((count % 4) * 8)
+		var final_pos = target_pos + offset
+		_assign_unit_path(u, final_pos)
+		u.set_meta("manual_order", true)
+		u.set_meta("manual_target", target_pos)
+		count += 1
+
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_build")
+	if main_ref != null and main_ref.hud != null:
+		main_ref.hud.show_toast("ШТАБ ВДВ: Всем десантным группам (%d бойцов) отдан приказ на штурм!" % count)
+
+# ==============================================================================
+# Жизненный цикл авиации и парашютистов
+# ==============================================================================
+func _tick_helis(delta: float) -> void:
+	var remove_list: Array = []
+	for h in active_helis:
+		if h == null or not is_instance_valid(h):
+			remove_list.append(h)
+			continue
+		h.tick(delta)
+		if h.is_finished:
+			remove_list.append(h)
+			if h.hq_ref != null and is_instance_valid(h.hq_ref):
+				h.hq_ref.set_meta("active_heli", null)
+			if selected_heli == h:
+				selected_heli = null
+
+	for h in remove_list:
+		active_helis.erase(h)
+
+func _tick_planes(delta: float) -> void:
+	var remove_list: Array = []
+	for p in active_planes:
+		if p == null or not is_instance_valid(p):
+			remove_list.append(p)
+			continue
+		p.tick(delta)
+		if p.is_finished:
+			remove_list.append(p)
+
+	for p in remove_list:
+		active_planes.erase(p)
+
+func _tick_parachutes(delta: float) -> void:
+	var remove_list: Array = []
+	for para in active_parachutes:
+		if para == null or not is_instance_valid(para):
+			remove_list.append(para)
+			continue
+		para.tick(delta)
+		if para.is_finished:
+			remove_list.append(para)
+
+	for para in remove_list:
+		active_parachutes.erase(para)
+
+# ==============================================================================
+# Автономный боевой интеллект бойцов ВДВ и поддержка кампании
+# ==============================================================================
+func _tick_vdv_ai(delta: float) -> void:
 	if world_ref == null or not is_instance_valid(world_ref):
-		return null
-	if not ("army" in world_ref) or world_ref.army == null:
-		return null
+		return
+	if not ("army" in world_ref and world_ref.army != null):
+		return
 
-	var army = world_ref.army
-	var u = Unit.new()
-	u.id = army.units.size()
-	u.type = utype
-	u.country_id = cid
-	u.pos = pos
-	u.state = Unit.State.IDLE
-	u.home = home_af
-	u.hp = 120.0 if utype == Unit.Type.ASSAULT else (220.0 if utype == Unit.Type.IFV else 100.0)
-	u.max_hp = u.hp
+	var alive_troops: Array = []
+	var player = world_ref.player
+	var player_id = player.id if player != null else 0
 
-	army.units.append(u)
+	for u in active_vdv_troops:
+		if u == null or not is_instance_valid(u):
+			continue
+		if not ("alive" in u and u.alive()):
+			continue
+		alive_troops.append(u)
 
-	if world_ref != null and "fx" in world_ref and world_ref.fx != null:
-		world_ref.fx.spawn("dust_s", pos.round(), 3)
+		# Полевая медицина спецназа
+		var medic_t = float(u.get_meta("medic_t", 0.0)) + delta
+		if medic_t >= 2.0:
+			medic_t = 0.0
+			if u.hp < u.max_hp:
+				u.hp = minf(u.max_hp, u.hp + 4.0)
+		u.set_meta("medic_t", medic_t)
 
-	return u
+		# Проверка ручного приказа игрока
+		if u.get_meta("manual_order", false):
+			var mt = u.get_meta("manual_target", Vector2.ZERO) as Vector2
+			if u.pos.distance_to(mt) <= 24.0 or u.state == Unit.State.IDLE or u.path.is_empty():
+				# Достигли назначенной точки или выполнили приказ — переходим в автономный режим
+				u.set_meta("manual_order", false)
 
+		# Автономное принятие тактических решений при простое
+		if not u.get_meta("manual_order", false):
+			if u.state == Unit.State.IDLE or u.path.is_empty():
+				var ai_think_t = float(u.get_meta("ai_think_t", 0.0)) + delta
+				if ai_think_t >= 1.2:
+					ai_think_t = 0.0
+					_execute_trooper_campaign_behavior(u, player_id)
+				u.set_meta("ai_think_t", ai_think_t)
+
+	active_vdv_troops = alive_troops
+
+	# Очистка выделения от погибших бойцов
+	var alive_selected: Array = []
+	for sel_u in selected_vdv_troops:
+		if sel_u != null and is_instance_valid(sel_u) and ("alive" in sel_u and sel_u.alive()):
+			alive_selected.append(sel_u)
+	selected_vdv_troops = alive_selected
+
+	# Пополнение и ремонт в освобождённых городах каждые 4 секунды
+	vdv_city_restock_t += delta
+	if vdv_city_restock_t >= 4.0 and not active_vdv_troops.is_empty():
+		vdv_city_restock_t = 0.0
+		_check_city_restock_and_reinforce(player_id)
+
+func _check_city_restock_and_reinforce(player_id: int) -> void:
+	if "cities" not in world_ref or world_ref.cities == null:
+		return
+
+	for c in world_ref.cities:
+		if c == null or c.country_id != player_id:
+			continue
+
+		var c_pos = Vector2(c.center * GameWorld.CELL)
+		var near_vdv: Array = []
+		for u in active_vdv_troops:
+			if u.pos.distance_to(c_pos) <= 65.0:
+				near_vdv.append(u)
+
+		if near_vdv.is_empty():
+			continue
+
+		# Полное лечение и ремонт отряда в городе
+		for u in near_vdv:
+			u.hp = u.max_hp
+
+		# Если отряд потерял бойцов (меньше 5) — город предоставляет добровольца
+		if active_vdv_troops.size() < 6:
+			var recruit = Unit.new()
+			recruit.id = world_ref.army._next_id
+			world_ref.army._next_id += 1
+			recruit.type = Unit.Type.ASSAULT
+			recruit.hp = 70.0
+			recruit.max_hp = 70.0
+			recruit.country_id = player_id
+			recruit.home = selected_hq
+			recruit.pos = c_pos + Vector2.RIGHT.rotated(randf() * TAU) * 12.0
+			recruit.heading = randf() * TAU
+			recruit.update_frame()
+			recruit.state = Unit.State.IDLE
+			recruit.set_meta("is_vdv_trooper", true)
+
+			world_ref.army.units.append(recruit)
+			active_vdv_troops.append(recruit)
+
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.show_toast("Город %s снарядил добровольца в десантно-штурмовую группу (+1 боец)!" % c.name)
+			if ClassDB.class_exists("UiKit"):
+				UiKit.snd("ui_build")
+
+func _execute_trooper_campaign_behavior(u: Unit, player_id: int) -> void:
+	# 1. Захват и удержание ячейки под ногами в пользу игрока
+	var cell = Vector2i((u.pos / float(GameWorld.CELL)).floor())
+	if world_ref.data != null and world_ref.data.inside(cell.x, cell.y):
+		if world_ref.data.get_owner(cell.x, cell.y) != player_id:
+			world_ref.data.set_owner(cell.x, cell.y, player_id)
+
+	# 2. Поиск ближайших вражеских юнитов в боевом радиусе 280 px
+	var best_enemy_u: Unit = null
+	var min_dist_u = 280.0
+	for enemy in world_ref.army.units:
+		if enemy == null or not enemy.alive():
+			continue
+		if enemy.country_id != player_id and (world_ref.mil == null or world_ref.mil.hostile(enemy.country_id, player_id)):
+			var d = u.pos.distance_to(enemy.pos)
+			if d < min_dist_u:
+				min_dist_u = d
+				best_enemy_u = enemy
+
+	if best_enemy_u != null:
+		var target_dist = 36.0 if u.type == Unit.Type.ASSAULT else 65.0
+		var dir = (best_enemy_u.pos - u.pos).normalized()
+		var move_to = u.pos + dir * maxf(12.0, min_dist_u - target_dist)
+		_assign_unit_path(u, move_to)
+		return
+
+	# 3. ПОИСК СЛЕДУЮЩЕГО ВРАЖЕСКОГО ГОРОДА ПО ВСЕЙ КАРТЕ (радиус до 3500 px!)
+	# Это гарантирует, что десант никогда не зависнет после захвата города, а продолжит наступление!
+	var best_city: City = null
+	var min_dist_c = 3500.0
+	if "cities" in world_ref and world_ref.cities != null:
+		for c in world_ref.cities:
+			if c == null or c.country_id == player_id:
+				continue
+			if world_ref.mil != null and not world_ref.mil.hostile(c.country_id, player_id):
+				continue
+			var c_pos = Vector2(c.center * GameWorld.CELL)
+			var d = u.pos.distance_to(c_pos)
+			if d < min_dist_c:
+				min_dist_c = d
+				best_city = c
+
+	if best_city != null:
+		var c_pos = Vector2(best_city.center * GameWorld.CELL)
+		_assign_unit_path(u, c_pos)
+		u.set_meta("campaign_target_city", best_city.name)
+		return
+
+	# 4. Если все вражеские города взяты — штурм военных объектов врага (аэродромы, радары, заводы)
+	if "mil" in world_ref and world_ref.mil != null and "facilities" in world_ref.mil:
+		var best_fac: Facility = null
+		var min_dist_f = 3500.0
+		for f in world_ref.mil.facilities:
+			if f == null or not world_ref.mil.alive(f) or f.country_id == player_id:
+				continue
+			if not world_ref.mil.hostile(f.country_id, player_id):
+				continue
+			var f_pos = Vector2(f.cell * GameWorld.CELL)
+			var d = u.pos.distance_to(f_pos)
+			if d < min_dist_f:
+				min_dist_f = d
+				best_fac = f
+
+		if best_fac != null:
+			var f_pos = Vector2(best_fac.cell * GameWorld.CELL)
+			_assign_unit_path(u, f_pos)
+			return
+
+func _assign_unit_path(u: Unit, dest: Vector2) -> void:
+	if world_ref != null and "econ" in world_ref and world_ref.econ != null and world_ref.econ.has_method("nav_path"):
+		var p: PackedVector2Array = world_ref.econ.nav_path(u.pos, dest)
+		if not p.is_empty():
+			u.path = p
+			u.pi = 0
+			u.state = Unit.State.MOVE
+			return
+
+	u.path = PackedVector2Array([dest])
+	u.pi = 0
+	u.state = Unit.State.MOVE
 
 # ==============================================================================
-# ОТРИСОВКА В МИРЕ: БАЗЫ ВДВ, АНИМАЦИИ ВЫСАДКИ, ПРИЦЕЛЫ И ТЕХНИКА
+# Класс вертолёта Ми-8 (Тактический десант, спуск на тросах, управляемость в полёте)
 # ==============================================================================
+class VdvHelicopter extends RefCounted:
+	var mod_ref: AirborneAssaultMod = null
+	var hq_ref: Facility = null
 
-class AirborneAssaultOverlay:
-	extends Node2D
+	var pos: Vector2 = Vector2.ZERO
+	var target_pos: Vector2 = Vector2.ZERO
+	var base_pos: Vector2 = Vector2.ZERO
 
+	var heading: float = 0.0
+	var speed: float = 44.0
+	var alt: float = 0.0
+	var rotor_angle: float = 0.0
+
+	enum State { TAKEOFF, FLY_TO_LZ, HOVER_DESCEND, FAST_ROPING, CLIMB, RTB, LANDING, DONE }
+	var state: int = State.TAKEOFF
+
+	var roping_timer: float = 0.0
+	var dropped_count: int = 0
+	var is_finished: bool = false
+	var dust_timer: float = 0.0
+
+	func setup(m: AirborneAssaultMod, hq: Facility, b_pos: Vector2, t_pos: Vector2) -> void:
+		mod_ref = m
+		hq_ref = hq
+		base_pos = b_pos
+		pos = b_pos
+		target_pos = t_pos
+		heading = (t_pos - b_pos).angle()
+		alt = 0.0
+		state = State.TAKEOFF
+
+	func get_status_text() -> String:
+		match state:
+			State.TAKEOFF: return "ВЗЛЁТ С ПЛОЩАДКИ"
+			State.FLY_TO_LZ: return "ВЫХОД В ЗОНУ ВЫСАДКИ"
+			State.HOVER_DESCEND: return "СНИЖЕНИЕ И ЗАВИСАНИЕ"
+			State.FAST_ROPING: return "ВЫСАДКА ДЕСАНТА НА ТРОСАХ"
+			State.CLIMB: return "НАБОР ВЫСОТЫ"
+			State.RTB: return "ВОЗВРАЩЕНИЕ НА БАЗУ"
+			State.LANDING: return "ПОСАДКА НА ПЛОЩАДКУ"
+			_: return "ЗАВЕРШЕНО"
+
+	func tick(delta: float) -> void:
+		rotor_angle += delta * 35.0
+		if rotor_angle > TAU:
+			rotor_angle -= TAU
+
+		match state:
+			State.TAKEOFF:
+				alt = minf(16.0, alt + delta * 12.0)
+				_spawn_rotor_dust(delta, 1.5)
+				if alt >= 16.0:
+					state = State.FLY_TO_LZ
+
+			State.FLY_TO_LZ:
+				var to_lz = target_pos - pos
+				var dist = to_lz.length()
+				heading = lerp_angle(heading, to_lz.angle(), delta * 3.5)
+				pos += Vector2.RIGHT.rotated(heading) * (speed * delta)
+
+				if dist <= 16.0:
+					state = State.HOVER_DESCEND
+
+			State.HOVER_DESCEND:
+				alt = maxf(2.5, alt - delta * 9.0)
+				_spawn_rotor_dust(delta, 0.4)
+				if alt <= 2.8:
+					state = State.FAST_ROPING
+					roping_timer = 0.0
+					dropped_count = 0
+
+			State.FAST_ROPING:
+				_spawn_rotor_dust(delta, 0.3)
+				roping_timer += delta
+
+				if roping_timer >= 0.75 and dropped_count < 4:
+					roping_timer = 0.0
+					dropped_count += 1
+					_deploy_trooper(dropped_count)
+
+				if dropped_count >= 4 and roping_timer >= 1.0:
+					state = State.CLIMB
+
+			State.CLIMB:
+				alt = minf(16.0, alt + delta * 10.0)
+				if alt >= 16.0:
+					state = State.RTB
+
+			State.RTB:
+				var to_base = base_pos - pos
+				var dist = to_base.length()
+				heading = lerp_angle(heading, to_base.angle(), delta * 3.5)
+				pos += Vector2.RIGHT.rotated(heading) * (speed * delta)
+
+				if dist <= 12.0:
+					pos = base_pos
+					state = State.LANDING
+
+			State.LANDING:
+				alt = maxf(0.0, alt - delta * 8.0)
+				_spawn_rotor_dust(delta, 1.5)
+				if alt <= 0.0:
+					alt = 0.0
+					state = State.DONE
+					is_finished = true
+
+	func _spawn_rotor_dust(delta: float, rate: float) -> void:
+		if mod_ref.world_ref != null and mod_ref.world_ref.fx != null:
+			dust_timer += delta
+			if dust_timer >= rate:
+				dust_timer = 0.0
+				mod_ref.world_ref.fx.spawn("dust_s", pos.round(), 4)
+
+	func _deploy_trooper(index: int) -> void:
+		if mod_ref.world_ref == null or not ("army" in mod_ref.world_ref and mod_ref.world_ref.army != null):
+			return
+
+		var p = mod_ref.world_ref.player
+		var u = Unit.new()
+		u.id = mod_ref.world_ref.army._next_id
+		mod_ref.world_ref.army._next_id += 1
+
+		if index in [1, 2]:
+			u.type = Unit.Type.ASSAULT
+			u.hp = 70.0
+		elif index == 3:
+			u.type = Unit.Type.ATGM
+			u.hp = 45.0
+		else:
+			u.type = Unit.Type.INFANTRY
+			u.hp = 50.0
+
+		u.max_hp = u.hp
+		u.country_id = p.id
+		u.home = hq_ref
+
+		var offset = Vector2.RIGHT.rotated(randf() * TAU) * float(randi_range(6, 16))
+		u.pos = pos + offset
+		u.heading = randf() * TAU
+		u.update_frame()
+		u.state = Unit.State.IDLE
+		u.set_meta("is_vdv_trooper", true)
+
+		mod_ref.world_ref.army.units.append(u)
+		mod_ref.active_vdv_troops.append(u)
+
+		if mod_ref.world_ref.fx != null:
+			mod_ref.world_ref.fx.spawn("dust_s", u.pos.round(), 6)
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_click")
+
+# ==============================================================================
+# Класс транспортного самолёта Ил-76 (Сброс БМД и роты десанта на парашютах)
+# ==============================================================================
+class VdvCargoPlane extends RefCounted:
+	var mod_ref: AirborneAssaultMod = null
+	var hq_ref: Facility = null
+
+	var pos: Vector2 = Vector2.ZERO
+	var lz_pos: Vector2 = Vector2.ZERO
+	var dir: Vector2 = Vector2.RIGHT
+	var speed: float = 62.0
+	var alt: float = 26.0
+
+	var has_dropped: bool = false
+	var is_finished: bool = false
+	var life_time: float = 0.0
+
+	func setup(m: AirborneAssaultMod, hq: Facility, target_pos: Vector2) -> void:
+		mod_ref = m
+		hq_ref = hq
+		lz_pos = target_pos
+
+		dir = Vector2(1.0, 0.2).normalized()
+		pos = target_pos - dir * 450.0
+		has_dropped = false
+
+	func tick(delta: float) -> void:
+		life_time += delta
+		pos += dir * (speed * delta)
+
+		var dist_to_lz = pos.distance_to(lz_pos)
+		if not has_dropped and (dist_to_lz <= 24.0 or (pos - lz_pos).dot(dir) > 0.0):
+			has_dropped = true
+			_drop_cargo()
+
+		if life_time > 18.0:
+			is_finished = true
+
+	func _drop_cargo() -> void:
+		if mod_ref == null:
+			return
+
+		var para_bmd = VdvParachuteCargo.new()
+		para_bmd.setup(mod_ref, hq_ref, pos, Unit.Type.IFV, true)
+		mod_ref.active_parachutes.append(para_bmd)
+
+		var para_assault = VdvParachuteCargo.new()
+		para_assault.setup(mod_ref, hq_ref, pos - dir * 18.0, Unit.Type.ASSAULT, false)
+		mod_ref.active_parachutes.append(para_assault)
+
+		var para_atgm = VdvParachuteCargo.new()
+		para_atgm.setup(mod_ref, hq_ref, pos - dir * 36.0, Unit.Type.ATGM, false)
+		mod_ref.active_parachutes.append(para_atgm)
+
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_build")
+
+# ==============================================================================
+# Класс спускающегося парашютного груза / техники
+# ==============================================================================
+class VdvParachuteCargo extends RefCounted:
+	var mod_ref: AirborneAssaultMod = null
+	var hq_ref: Facility = null
+
+	var pos: Vector2 = Vector2.ZERO
+	var alt: float = 24.0
+	var unit_type: int = Unit.Type.ASSAULT
+	var is_vehicle: bool = false
+	var is_finished: bool = false
+	var swing_phase: float = 0.0
+
+	func setup(m: AirborneAssaultMod, hq: Facility, drop_p: Vector2, u_type: int, vehicle: bool) -> void:
+		mod_ref = m
+		hq_ref = hq
+		pos = drop_p
+		unit_type = u_type
+		is_vehicle = vehicle
+		alt = 24.0
+		swing_phase = randf() * TAU
+
+	func tick(delta: float) -> void:
+		swing_phase += delta * 3.0
+		alt -= delta * 7.5
+		pos.x += sin(swing_phase) * delta * 4.0
+
+		if alt <= 0.0:
+			alt = 0.0
+			is_finished = true
+			_land()
+
+	func _land() -> void:
+		if mod_ref.world_ref == null or not ("army" in mod_ref.world_ref and mod_ref.world_ref.army != null):
+			return
+
+		var p = mod_ref.world_ref.player
+		var u = Unit.new()
+		u.id = mod_ref.world_ref.army._next_id
+		mod_ref.world_ref.army._next_id += 1
+		u.type = unit_type
+		u.country_id = p.id
+		u.home = hq_ref
+
+		if is_vehicle:
+			u.hp = 95.0
+		else:
+			u.hp = 70.0 if unit_type == Unit.Type.ASSAULT else 45.0
+		u.max_hp = u.hp
+
+		u.pos = pos
+		u.heading = randf() * TAU
+		u.update_frame()
+		u.state = Unit.State.IDLE
+		u.set_meta("is_vdv_trooper", true)
+
+		mod_ref.world_ref.army.units.append(u)
+		mod_ref.active_vdv_troops.append(u)
+
+		if mod_ref.world_ref.fx != null:
+			mod_ref.world_ref.fx.spawn("dust_s", pos.round(), 8)
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_click")
+
+# ==============================================================================
+# Слой игрового мира (Отрисовка призрака постройки, вертолёта, тросов, парашютов и выделения)
+# ==============================================================================
+class AirborneAssaultWorldLayer extends Node2D:
 	var mod_ref: AirborneAssaultMod = null
 	var main_ref: Node = null
 	var world_ref: Node = null
 
-	func setup(mod: AirborneAssaultMod, main: Node, world: Node) -> void:
-		mod_ref = mod
+	func setup(m: AirborneAssaultMod, main: Node, world: Node) -> void:
+		mod_ref = m
 		main_ref = main
 		world_ref = world
-		z_index = 80
+		z_index = 68
 
 	func _unhandled_input(event: InputEvent) -> void:
-		if mod_ref == null or main_ref == null or world_ref == null:
+		if mod_ref == null or main_ref == null:
 			return
 
-		# Base placement mode input
-		if mod_ref.is_placing_base:
-			if event is InputEventMouseMotion:
-				var m_world = main_ref.cam.screen_to_world(event.position)
-				mod_ref.hover_cell = Vector2i((m_world / float(GameWorld.CELL)).floor())
-				queue_redraw()
-			elif event is InputEventMouseButton and event.pressed:
+		# 1. Режим размещения постройки Штаба ВДВ
+		if mod_ref.is_placing_hq:
+			if event is InputEventMouseButton and event.pressed:
 				if event.button_index == MOUSE_BUTTON_LEFT:
-					var m_world = main_ref.cam.screen_to_world(event.position)
-					var cell = Vector2i((m_world / float(GameWorld.CELL)).floor())
-					mod_ref.try_place_base(cell)
+					var mpos = main_ref.cam.screen_to_world(event.position)
+					var cell = Vector2i((mpos / float(GameWorld.CELL)).floor())
+					mod_ref.place_hq_at(cell)
 					get_viewport().set_input_as_handled()
 				elif event.button_index == MOUSE_BUTTON_RIGHT:
-					mod_ref.cancel_base_placement()
+					mod_ref.cancel_hq_placement()
 					get_viewport().set_input_as_handled()
-			elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-				mod_ref.cancel_base_placement()
-				get_viewport().set_input_as_handled()
 			return
 
-		# Airborne targeting mode input
-		if mod_ref.targeting_mode != 0:
-			if event is InputEventMouseMotion:
-				mod_ref.target_hover_pos = main_ref.cam.screen_to_world(event.position)
-				queue_redraw()
-			elif event is InputEventMouseButton and event.pressed:
+		# 2. Режим целеуказания для вылета десанта (Ми-8 или Ил-76) или общего наступления
+		if mod_ref.targeting_op != "":
+			if event is InputEventMouseButton and event.pressed:
 				if event.button_index == MOUSE_BUTTON_LEFT:
-					var wp = main_ref.cam.screen_to_world(event.position)
-					mod_ref.try_launch_assault(mod_ref.targeting_mode, mod_ref.targeting_base, wp)
+					var mpos = main_ref.cam.screen_to_world(event.position)
+					mod_ref.launch_operation_at(mpos)
 					get_viewport().set_input_as_handled()
 				elif event.button_index == MOUSE_BUTTON_RIGHT:
 					mod_ref.cancel_targeting()
 					get_viewport().set_input_as_handled()
-			elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-				mod_ref.cancel_targeting()
-				get_viewport().set_input_as_handled()
 			return
+
+		# 3. Интерактивное управление бойцами ВДВ и вертолётом на карте
+		if event is InputEventMouseButton and event.pressed:
+			var mpos = main_ref.cam.screen_to_world(event.position)
+
+			# ЛКМ: Выбор вертолёта в воздухе или бойца/отряда ВДВ на земле
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				# А) Проверяем вертолёты
+				for h in mod_ref.active_helis:
+					if h.pos.distance_to(mpos) <= 24.0:
+						mod_ref.selected_heli = h
+						mod_ref.selected_vdv_troops.clear()
+						if ClassDB.class_exists("UiKit"):
+							UiKit.snd("ui_select")
+						if main_ref.hud != null:
+							main_ref.hud.show_toast("Ми-8 взят под прямое управление (ПКМ по карте - изменить точку высадки)")
+						get_viewport().set_input_as_handled()
+						return
+
+				# Б) Проверяем бойцов ВДВ на земле
+				var clicked_trooper: Unit = null
+				for u in mod_ref.active_vdv_troops:
+					if u != null and is_instance_valid(u) and ("alive" in u and u.alive()):
+						if u.pos.distance_to(mpos) <= 24.0:
+							clicked_trooper = u
+							break
+
+				if clicked_trooper != null:
+					# Выделяем бойца и всю его группу в радиусе 160 px
+					mod_ref.selected_vdv_troops.clear()
+					for u in mod_ref.active_vdv_troops:
+						if u != null and is_instance_valid(u) and ("alive" in u and u.alive()):
+							if u.pos.distance_to(clicked_trooper.pos) <= 160.0:
+								mod_ref.selected_vdv_troops.append(u)
+
+					mod_ref.selected_heli = null
+					if ClassDB.class_exists("UiKit"):
+						UiKit.snd("ui_select")
+					if main_ref.hud != null:
+						main_ref.hud.show_toast("ОТРЯД СПЕЦНАЗА ВДВ (%d бойцов) ВЫБРАН (ПКМ по карте - движение / атака)" % mod_ref.selected_vdv_troops.size())
+					get_viewport().set_input_as_handled()
+					return
+				else:
+					# Кликнули в пустое место — сбрасываем выделение десанта
+					if not mod_ref.selected_vdv_troops.is_empty():
+						mod_ref.selected_vdv_troops.clear()
+
+			# ПКМ: Отдача приказа движения или атаки выбранному вертолёту или отряду ВДВ
+			elif event.button_index == MOUSE_BUTTON_RIGHT:
+				if mod_ref.selected_heli != null and is_instance_valid(mod_ref.selected_heli):
+					mod_ref.selected_heli.target_pos = mpos
+					if mod_ref.selected_heli.state in [VdvHelicopter.State.FLY_TO_LZ, VdvHelicopter.State.HOVER_DESCEND]:
+						mod_ref.selected_heli.state = VdvHelicopter.State.FLY_TO_LZ
+					if ClassDB.class_exists("UiKit"):
+						UiKit.snd("ui_select")
+					if main_ref.hud != null:
+						main_ref.hud.show_toast("Ми-8 изменил курс на новую точку высадки!")
+					get_viewport().set_input_as_handled()
+					return
+
+				if not mod_ref.selected_vdv_troops.is_empty():
+					var cell = Vector2i((mpos / float(GameWorld.CELL)).floor())
+					var target_city: City = world_ref.city_at_cell(cell) if world_ref != null and world_ref.has_method("city_at_cell") else null
+					var is_enemy_city = target_city != null and world_ref.player != null and target_city.country_id != world_ref.player.id
+
+					var idx = 0
+					var count = mod_ref.selected_vdv_troops.size()
+					for u in mod_ref.selected_vdv_troops:
+						if u == null or not is_instance_valid(u) or not ("alive" in u and u.alive()):
+							continue
+
+						var form_offset = Vector2.RIGHT.rotated(float(idx) * TAU / maxf(1.0, float(count))) * 12.0
+						var dest = (Vector2(target_city.center * GameWorld.CELL) if is_enemy_city else mpos) + form_offset
+
+						mod_ref._assign_unit_path(u, dest)
+						u.set_meta("manual_order", true)
+						u.set_meta("manual_target", dest)
+						idx += 1
+
+					if ClassDB.class_exists("UiKit"):
+						UiKit.snd("ui_click")
+
+					if main_ref.hud != null:
+						if is_enemy_city:
+							main_ref.hud.show_toast("СПЕЦНАЗ ВДВ: ШТУРМ ГОРОДА %s!" % target_city.name)
+						else:
+							main_ref.hud.show_toast("СПЕЦНАЗ ВДВ: Приказ принят, выдвигаемся на позицию!")
+
+					get_viewport().set_input_as_handled()
+					return
 
 	func _draw() -> void:
-		if mod_ref == null:
+		if mod_ref == null or main_ref == null:
 			return
 
-		_draw_airborne_bases()
+		# 1. Отрисовка вертолётных площадок на построенных штабах ВДВ
+		if world_ref != null and "mil" in world_ref and world_ref.mil != null:
+			for f in world_ref.mil.facilities:
+				if f is Facility and f.has_meta("is_vdv_hq") and f.get_meta("is_vdv_hq"):
+					_draw_helipad(f)
 
-		if mod_ref.is_placing_base:
-			_draw_base_ghost()
+		# 2. Отрисовка призрака сетки при строительстве
+		if mod_ref.is_placing_hq:
+			_draw_placement_ghost()
 
-		if mod_ref.targeting_mode != 0:
-			_draw_targeting_reticle()
+		# 3. Отрисовка прицела десантирования в режиме целеуказания
+		if mod_ref.targeting_op != "":
+			_draw_targeting_overlay()
 
-		_draw_active_missions()
+		# 4. Отрисовка тактических кругов под выбранными бойцами ВДВ
+		_draw_selected_vdv_indicators()
 
-	func _draw_airborne_bases() -> void:
-		for b in mod_ref.bases:
-			if b == null or not is_instance_valid(b) or not world_ref.mil.alive(b):
+		# 5. Отрисовка вертолётов в воздухе
+		for h in mod_ref.active_helis:
+			_draw_helicopter(h)
+
+		# 6. Отрисовка самолётов Ил-76 в воздухе
+		for p in mod_ref.active_planes:
+			_draw_cargo_plane(p)
+
+		# 7. Отрисовка спускающихся парашютов
+		for para in mod_ref.active_parachutes:
+			_draw_parachute(para)
+
+	func _draw_helipad(f: Facility) -> void:
+		var center = Vector2(f.cell * GameWorld.CELL) + Vector2(float(f.size.x * GameWorld.CELL) * 0.5, float(f.size.y * GameWorld.CELL) * 0.5)
+		draw_circle(center, 14.0, Color(0.18, 0.2, 0.22, 0.8))
+		draw_arc(center, 14.0, 0, TAU, 24, Color(0.9, 0.75, 0.2, 0.9), 1.5)
+		var col_h = Color(0.95, 0.85, 0.3, 0.95)
+		draw_line(center + Vector2(-5, -7), center + Vector2(-5, 7), col_h, 2.0)
+		draw_line(center + Vector2(5, -7), center + Vector2(5, 7), col_h, 2.0)
+		draw_line(center + Vector2(-5, 0), center + Vector2(5, 0), col_h, 2.0)
+
+	func _draw_placement_ghost() -> void:
+		var mouse_w = main_ref.cam.screen_to_world(get_viewport().get_mouse_position())
+		var cell = Vector2i((mouse_w / float(GameWorld.CELL)).floor())
+		var valid = mod_ref.can_place_hq_at(cell)
+
+		var pos = Vector2(cell * GameWorld.CELL)
+		var sz = Vector2(HQ_SIZE * GameWorld.CELL)
+
+		var outline_col = Color(0.2, 1.0, 0.3, 0.9) if valid else Color(1.0, 0.25, 0.25, 0.9)
+		var fill_col = Color(0.2, 1.0, 0.3, 0.2) if valid else Color(1.0, 0.25, 0.25, 0.2)
+
+		draw_rect(Rect2(pos, sz), fill_col)
+		draw_rect(Rect2(pos, sz), outline_col, false, 2.0)
+
+		for x in range(HQ_SIZE.x + 1):
+			var lx = pos.x + float(x * GameWorld.CELL)
+			draw_line(Vector2(lx, pos.y), Vector2(lx, pos.y + sz.y), Color(outline_col.r, outline_col.g, outline_col.b, 0.3), 1.0)
+		for y in range(HQ_SIZE.y + 1):
+			var ly = pos.y + float(y * GameWorld.CELL)
+			draw_line(Vector2(pos.x, ly), Vector2(pos.x + sz.x, ly), Color(outline_col.r, outline_col.g, outline_col.b, 0.3), 1.0)
+
+	func _draw_targeting_overlay() -> void:
+		var mouse_w = main_ref.cam.screen_to_world(get_viewport().get_mouse_position())
+		var radius = 28.0
+		var ring_col = Color(0.2, 0.85, 1.0, 0.85)
+
+		if mod_ref.targeting_op == "il76":
+			radius = 48.0
+			ring_col = Color(1.0, 0.75, 0.2, 0.85)
+		elif mod_ref.targeting_op == "vdv_order_all":
+			radius = 38.0
+			ring_col = Color(1.0, 0.3, 0.3, 0.9)
+
+		if mod_ref.targeting_fac != null:
+			var base_p = Vector2(mod_ref.targeting_fac.cell * GameWorld.CELL) + Vector2(18, 12)
+			draw_line(base_p, mouse_w, Color(ring_col.r, ring_col.g, ring_col.b, 0.4), 1.5)
+
+		draw_circle(mouse_w, radius, Color(ring_col.r, ring_col.g, ring_col.b, 0.15))
+		draw_arc(mouse_w, radius, 0, TAU, 32, ring_col, 2.0)
+		draw_line(mouse_w - Vector2(radius + 8, 0), mouse_w + Vector2(radius + 8, 0), ring_col, 1.5)
+		draw_line(mouse_w - Vector2(0, radius + 8), mouse_w + Vector2(0, radius + 8), ring_col, 1.5)
+
+	func _draw_selected_vdv_indicators() -> void:
+		if mod_ref.selected_vdv_troops.is_empty():
+			return
+
+		var sel_col = Color(0.2, 1.0, 0.4, 0.85)
+		for u in mod_ref.selected_vdv_troops:
+			if u == null or not is_instance_valid(u) or not ("alive" in u and u.alive()):
 				continue
 
-			var origin = Vector2(b.cell * GameWorld.CELL)
-			var center = b.center_px()
-			var base_w = float(b.size.x * GameWorld.CELL)
-			var base_h = float(b.size.y * GameWorld.CELL)
+			var r = 10.0 if u.type == Unit.Type.IFV else 6.0
+			draw_arc(u.pos, r, 0, TAU, 16, sel_col, 1.5)
 
-			# 1. Бетонный настил вертолётной площадки
-			var pad_rect = Rect2(origin - Vector2(2, 2), Vector2(base_w + 4, base_h + 4))
-			draw_rect(pad_rect, Color(0.24, 0.27, 0.30, 0.95), true)
-			draw_rect(pad_rect, Color(0.12, 0.14, 0.16, 1.0), false, 1.0)
+			# Полоска здоровья над бойцом
+			var hp_frac = clampf(u.hp / maxf(1.0, u.max_hp), 0.0, 1.0)
+			var bar_w = 12.0
+			var bar_pos = u.pos + Vector2(-bar_w * 0.5, -r - 4.0)
+			draw_rect(Rect2(bar_pos, Vector2(bar_w, 2.0)), Color(0, 0, 0, 0.6))
+			draw_rect(Rect2(bar_pos, Vector2(bar_w * hp_frac, 2.0)), Color(0.2, 0.9, 0.3, 0.9))
 
-			# 2. Жёлто-чёрная тактическая окантовка ВПП
-			draw_line(pad_rect.position, pad_rect.position + Vector2(pad_rect.size.x, 0), Color(0.95, 0.8, 0.1, 0.9), 1.0)
-			draw_line(pad_rect.position + Vector2(0, pad_rect.size.y), pad_rect.position + pad_rect.size, Color(0.95, 0.8, 0.1, 0.9), 1.0)
+			# Линия приказа к цели
+			if not u.path.is_empty() and u.pi < u.path.size():
+				var dest = u.path[u.path.size() - 1]
+				draw_line(u.pos, dest, Color(sel_col.r, sel_col.g, sel_col.b, 0.35), 1.0)
+				draw_circle(dest, 3.0, sel_col)
 
-			# 3. Белый посадочный круг с буквой 'H'
-			draw_arc(center, 4.2, 0, TAU, 16, Color(1, 1, 1, 0.9), 1.0)
-			draw_line(center + Vector2(-2.2, -2.5), center + Vector2(-2.2, 2.5), Color(1, 1, 1, 0.95), 1.2)
-			draw_line(center + Vector2(2.2, -2.5), center + Vector2(2.2, 2.5), Color(1, 1, 1, 0.95), 1.2)
-			draw_line(center + Vector2(-2.2, 0), center + Vector2(2.2, 0), Color(1, 1, 1, 0.95), 1.2)
+	func _draw_helicopter(h: VdvHelicopter) -> void:
+		var shadow_pos = h.pos + Vector2(h.alt * 0.4, h.alt * 0.7)
+		var shadow_scale = maxf(0.5, 1.0 - h.alt * 0.03)
+		draw_circle(shadow_pos, 8.0 * shadow_scale, Color(0, 0, 0, 0.35))
 
-			# 4. Командный контейнер / оперативный штаб ВДВ (в углу)
-			var hq_rect = Rect2(origin + Vector2(base_w - 5, -5), Vector2(6, 4))
-			draw_rect(hq_rect, Color(0.18, 0.35, 0.22, 1.0), true) # Камуфляж
-			draw_rect(hq_rect, Color(0.08, 0.16, 0.10, 1.0), false, 1.0)
+		var heli_screen_pos = h.pos - Vector2(0, h.alt)
 
-			# 5. Радиомачта с мигающим красным маяком
-			var mast_pt = origin + Vector2(base_w + 2, -6)
-			draw_line(origin + Vector2(base_w + 2, 0), mast_pt, Color(0.7, 0.72, 0.75, 1.0), 1.0)
-			var flash = (sin(Time.get_ticks_msec() * 0.008) > 0.1)
-			draw_circle(mast_pt, 1.4, Color(1.0, 0.1, 0.1, 1.0) if flash else Color(0.4, 0.0, 0.0, 0.5))
+		if h.state == VdvHelicopter.State.FAST_ROPING:
+			var rope_col = Color(0.2, 0.22, 0.2, 0.9)
+			draw_line(heli_screen_pos + Vector2(-4, 0), h.pos + Vector2(-6, 0), rope_col, 1.5)
+			draw_line(heli_screen_pos + Vector2(4, 0), h.pos + Vector2(6, 0), rope_col, 1.5)
 
-			# 6. Флаг ВДВ (сине-зелёный)
-			var flag_base = origin + Vector2(-2, -5)
-			draw_line(origin + Vector2(-2, 0), flag_base, Color(0.6, 0.6, 0.6), 1.0)
-			draw_rect(Rect2(flag_base + Vector2(0, 0), Vector2(3, 1.5)), Color(0.12, 0.55, 0.95)) # Синий верх
-			draw_rect(Rect2(flag_base + Vector2(0, 1.5), Vector2(3, 1.5)), Color(0.15, 0.65, 0.25)) # Зелёный низ
+		var fwd = Vector2.RIGHT.rotated(h.heading)
+		var side = Vector2.UP.rotated(h.heading)
+		var body_col = Color(0.26, 0.36, 0.3, 1.0)
+		var dark_col = Color(0.18, 0.24, 0.2, 1.0)
 
-			# 7. Подсветка выбранной базы игроком
-			if main_ref != null and main_ref.selected_fac == b:
-				var sel_r = pad_rect.grow(2)
-				draw_rect(sel_r, Color(1.0, 0.85, 0.2, 0.9), false, 1.2)
-				# Угловые скобки
-				draw_line(sel_r.position, sel_r.position + Vector2(3, 0), Color(1, 0.9, 0.3), 1.5)
-				draw_line(sel_r.position, sel_r.position + Vector2(0, 3), Color(1, 0.9, 0.3), 1.5)
-				draw_line(sel_r.end, sel_r.end - Vector2(3, 0), Color(1, 0.9, 0.3), 1.5)
-				draw_line(sel_r.end, sel_r.end - Vector2(0, 3), Color(1, 0.9, 0.3), 1.5)
+		draw_line(heli_screen_pos - fwd * 12.0, heli_screen_pos + fwd * 8.0, body_col, 5.0)
+		draw_circle(heli_screen_pos + fwd * 8.0, 3.0, Color(0.2, 0.75, 0.95, 1.0))
+		draw_line(heli_screen_pos - fwd * 12.0, heli_screen_pos - fwd * 22.0, dark_col, 2.5)
+		draw_line(heli_screen_pos - fwd * 22.0 - side * 4.0, heli_screen_pos - fwd * 22.0 + side * 4.0, Color(0.9, 0.6, 0.1, 0.9), 1.5)
 
-			# 8. Индикатор перезарядки (если борт на перезарядке)
-			var cd = float(b.get_meta("cooldown_left", 0.0))
-			if cd > 0.0:
-				var pct = 1.0 - (cd / 14.0)
-				draw_arc(center, 6.5, -PI*0.5, -PI*0.5 + TAU * pct, 16, Color(1, 0.4, 0.2, 0.9), 1.5)
+		var blade_vec = Vector2.RIGHT.rotated(h.rotor_angle) * 18.0
+		draw_line(heli_screen_pos - blade_vec, heli_screen_pos + blade_vec, Color(0.85, 0.9, 0.95, 0.75), 1.5)
+		draw_line(heli_screen_pos - blade_vec.orthogonal(), heli_screen_pos + blade_vec.orthogonal(), Color(0.85, 0.9, 0.95, 0.75), 1.5)
 
-	func _draw_base_ghost() -> void:
-		var cell = mod_ref.hover_cell
-		if cell.x < 0 or cell.y < 0:
-			return
-		var is_ok = mod_ref.is_valid_base_cell(cell)
-		var origin = Vector2(cell * GameWorld.CELL)
-		var size = Vector2(2 * GameWorld.CELL, 2 * GameWorld.CELL)
-		var col = Color(0.2, 0.85, 0.3, 0.45) if is_ok else Color(0.9, 0.2, 0.2, 0.45)
-		var border = Color(0.3, 1.0, 0.4, 0.9) if is_ok else Color(1.0, 0.3, 0.3, 0.9)
+		if mod_ref.selected_heli == h:
+			draw_arc(heli_screen_pos, 16.0, 0, TAU, 24, Color(0.2, 1.0, 0.4, 0.9), 2.0)
+			draw_line(h.pos, h.target_pos, Color(0.2, 1.0, 0.4, 0.5), 1.0)
 
-		draw_rect(Rect2(origin, size), col, true)
-		draw_rect(Rect2(origin, size), border, false, 1.2)
+	func _draw_cargo_plane(p: VdvCargoPlane) -> void:
+		var shadow_pos = p.pos + Vector2(p.alt * 0.4, p.alt * 0.7)
+		draw_circle(shadow_pos, 16.0, Color(0, 0, 0, 0.25))
 
-		# Символ вертолёта в центре призрака
-		var center = origin + size * 0.5
-		draw_arc(center, 4.0, 0, TAU, 16, border, 1.0)
-		draw_line(center + Vector2(-2, -2), center + Vector2(-2, 2), border, 1.0)
-		draw_line(center + Vector2(2, -2), center + Vector2(2, 2), border, 1.0)
-		draw_line(center + Vector2(-2, 0), center + Vector2(2, 0), border, 1.0)
+		var plane_pos = p.pos - Vector2(0, p.alt)
+		var fwd = p.dir
+		var side = Vector2(-fwd.y, fwd.x)
+		var wing_span = 26.0
 
-	func _draw_targeting_reticle() -> void:
-		var base = mod_ref.targeting_base
-		var tgt = mod_ref.target_hover_pos
-		var m = mod_ref.targeting_mode
-		var col = Color(1.0, 0.55, 0.1, 0.9) if m == 1 else Color(0.2, 0.8, 1.0, 0.9)
+		draw_line(plane_pos - side * wing_span, plane_pos + side * wing_span, Color(0.65, 0.7, 0.75, 1.0), 3.5)
+		draw_line(plane_pos - fwd * 22.0, plane_pos + fwd * 20.0, Color(0.72, 0.78, 0.84, 1.0), 6.0)
+		draw_circle(plane_pos + fwd * 20.0, 3.0, Color(0.2, 0.7, 0.95, 1.0))
+		draw_line(plane_pos - fwd * 20.0 - side * 10.0, plane_pos - fwd * 20.0 + side * 10.0, Color(0.65, 0.7, 0.75, 1.0), 2.5)
 
-		# Линия дальности от базы до цели
-		if base != null and is_instance_valid(base):
-			var b_pos = base.center_px()
-			draw_dashed_line(b_pos, tgt, col * Color(1, 1, 1, 0.6), 1.0, 5.0)
+	func _draw_parachute(para: VdvParachuteCargo) -> void:
+		var ground_pos = para.pos
+		var cargo_pos = para.pos - Vector2(0, para.alt)
+		var chute_pos = cargo_pos - Vector2(0, 14.0)
 
-		# Кольцо целеуказания
-		var rad = 22.0 if m == 1 else 36.0
-		draw_arc(tgt, rad, 0, TAU, 32, col, 1.2)
-		draw_arc(tgt, rad * 0.4, 0, TAU, 16, col * Color(1, 1, 1, 0.7), 1.0)
+		draw_circle(ground_pos, 4.0, Color(0, 0, 0, 0.3))
 
-		# Перекрестие
-		draw_line(tgt + Vector2(-rad - 6, 0), tgt + Vector2(-rad + 4, 0), col, 1.5)
-		draw_line(tgt + Vector2(rad - 4, 0), tgt + Vector2(rad + 6, 0), col, 1.5)
-		draw_line(tgt + Vector2(0, -rad - 6), tgt + Vector2(0, -rad + 4), col, 1.5)
-		draw_line(tgt + Vector2(0, rad - 4), tgt + Vector2(0, rad + 6), col, 1.5)
+		var str_col = Color(0.8, 0.8, 0.8, 0.6)
+		draw_line(chute_pos + Vector2(-10, 0), cargo_pos, str_col, 1.0)
+		draw_line(chute_pos + Vector2(10, 0), cargo_pos, str_col, 1.0)
 
-	func _draw_active_missions() -> void:
-		for op in mod_ref.active_ops:
-			if op["type"] == "heli":
-				_draw_heli_mission(op)
-			elif op["type"] == "plane":
-				_draw_plane_mission(op)
+		var r_chute = 12.0 if para.is_vehicle else 8.0
+		draw_arc(chute_pos, r_chute, PI, TAU, 16, Color(0.95, 0.95, 0.95, 0.95), 2.5)
 
-	func _draw_heli_mission(op: Dictionary) -> void:
-		var pos = op["pos"]
-		var hd = float(op["heading"])
-		var rot_f = int(op["rotor_frame"])
-
-		# Тень
-		draw_circle(pos + Vector2(0, 10), 5.5, Color(0, 0, 0, 0.28))
-
-		# Корпус Ми-8
-		var body_col = Color(0.28, 0.38, 0.30)
-		draw_circle(pos, 4.8, body_col)
-		var tail_dir = -Vector2.RIGHT.rotated(hd)
-		draw_line(pos, pos + tail_dir * 12.0, body_col, 2.0)
-		draw_line(pos + tail_dir * 12.0, pos + tail_dir * 12.0 + tail_dir.orthogonal() * 3.5, Color(0.2, 0.25, 0.2), 1.5)
-
-		# Кабина
-		var nose = pos + Vector2.RIGHT.rotated(hd) * 4.5
-		draw_circle(nose, 2.2, Color(0.2, 0.45, 0.65))
-
-		# Несущий винт (вращение)
-		var blade_angles = [0.0, 2.1, 4.2]
-		for a in blade_angles:
-			var ba = a + float(rot_f) * 1.1
-			var bp = pos + Vector2(cos(ba), sin(ba)) * 14.0
-			draw_line(pos, bp, Color(0.15, 0.15, 0.15, 0.8), 1.2)
-
-		# Фаза высадки: спусковые тросы и штурмовики
-		if op["phase"] == "hover_drop":
-			var drop_t = float(op["hover_time"])
-			# Трос 1
-			draw_line(pos + Vector2(-3, 2), op["target_pos"] + Vector2(-3, 0), Color(0.2, 0.18, 0.15, 0.9), 1.0)
-			# Трос 2
-			draw_line(pos + Vector2(3, 2), op["target_pos"] + Vector2(3, 0), Color(0.2, 0.18, 0.15, 0.9), 1.0)
-
-			# Скользящие по тросам бойцы
-			for k in range(2):
-				var slide_pct = clampf((drop_t - float(k) * 0.4) * 1.6, 0.0, 1.0)
-				if slide_pct > 0.0 and slide_pct < 1.0:
-					var soldier_pos = pos.lerp(op["target_pos"], slide_pct) + Vector2(3 if k == 1 else -3, 0)
-					draw_circle(soldier_pos, 1.6, Color(0.12, 0.25, 0.14)) # Боец
-					draw_circle(soldier_pos + Vector2(0, -1.2), 0.9, Color(0.85, 0.75, 0.6)) # Каска
-
-	func _draw_plane_mission(op: Dictionary) -> void:
-		var pos = op["pos"]
-		var dir = op["dir"] as Vector2
-
-		# Тень
-		draw_circle(pos + Vector2(0, 24), 9.0, Color(0, 0, 0, 0.22))
-
-		# Ил-76 (фюзеляж, стреловидные крылья, 4 турбины)
-		var f_col = Color(0.72, 0.75, 0.78)
-		var wing_col = Color(0.65, 0.68, 0.72)
-
-		draw_circle(pos, 6.0, f_col)
-		draw_line(pos - dir * 18.0, pos + dir * 16.0, f_col, 4.0)
-
-		# Крылья
-		var ortho = dir.orthogonal()
-		draw_line(pos - ortho * 28.0 - dir * 4.0, pos + ortho * 28.0 - dir * 4.0, wing_col, 3.0)
-
-		# 4 двигателя
-		for m in [-20.0, -10.0, 10.0, 20.0]:
-			draw_line(pos + ortho * m - dir * 6.0, pos + ortho * m + dir * 3.0, Color(0.3, 0.32, 0.35), 2.0)
-
-		# Хвостовое оперение Т-образное
-		var tail_root = pos - dir * 17.0
-		draw_line(tail_root - ortho * 10.0, tail_root + ortho * 10.0, wing_col, 2.0)
-
-		# Парашютисты и десантируемая БМД
-		if op["cargo_dropped"]:
-			for p in op["paratroopers"]:
-				if not p["landed"]:
-					var alt = float(p["alt"])
-					var sway = sin(float(p["sway"])) * 2.5
-					var p_pos = p["target"] + Vector2(sway, -alt)
-
-					var is_ifv = (p["type"] == Unit.Type.IFV)
-					var chute_r = 7.0 if is_ifv else 4.0
-
-					# Купол парашюта (бело-голубой)
-					var ch_col = Color(0.95, 0.95, 0.98) if not is_ifv else Color(0.9, 0.6, 0.2)
-					draw_arc(p_pos + Vector2(0, -chute_r), chute_r, -PI, 0, 16, ch_col, 1.5)
-					draw_line(p_pos + Vector2(-chute_r, -chute_r), p_pos, Color(0.7, 0.7, 0.7, 0.6), 1.0)
-					draw_line(p_pos + Vector2(chute_r, -chute_r), p_pos, Color(0.7, 0.7, 0.7, 0.6), 1.0)
-
-					# Подвешенный груз (БМД или парашютист)
-					if is_ifv:
-						draw_rect(Rect2(p_pos + Vector2(-3, 0), Vector2(6, 4)), Color(0.25, 0.4, 0.25), true)
-					else:
-						draw_circle(p_pos + Vector2(0, 1), 1.4, Color(0.15, 0.3, 0.18))
+		if para.is_vehicle:
+			draw_rect(Rect2(cargo_pos - Vector2(7, 4), Vector2(14, 8)), Color(0.25, 0.38, 0.28, 1.0))
+		else:
+			draw_circle(cargo_pos, 3.0, Color(0.2, 0.35, 0.22, 1.0))
