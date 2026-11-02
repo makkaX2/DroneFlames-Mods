@@ -23,6 +23,9 @@ func init_mod(mm: Node) -> void:
 	print("[CityExpansion] Native mod initialized.")
 
 func cleanup_mod(mm: Node) -> void:
+	var main: Variant = get("main_ref")
+	if main != null and is_instance_valid(main) and main.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
+		mm.call("cleanup_mod_hud", main.hud, Callable(self, "_on_hud_action"), ["city_expand_tool"])
 	selected_city = null
 	last_ops_key = ""
 	if mm and mm.has_method("unregister_hook"):

@@ -70,6 +70,9 @@ func init_mod(mm: Node) -> void:
 	print("[AirborneAssault] Native VDV mod initialized.")
 
 func cleanup_mod(mm: Node) -> void:
+	var main: Variant = get("main_ref")
+	if main != null and is_instance_valid(main) and main.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
+		mm.call("cleanup_mod_hud", main.hud, Callable(self, "_on_hud_action"), ["airborne_hq"])
 	_cleanup_nodes()
 	if mm != null:
 		if mm.has_method("unregister_texture"):
