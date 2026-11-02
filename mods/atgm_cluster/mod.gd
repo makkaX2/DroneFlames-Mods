@@ -220,26 +220,21 @@ func _detonate_submunition(pos: Vector2, dmg: float, cid: int) -> void:
 		for u in world_ref.army.units:
 			if not (u is Unit and u.alive()):
 				continue
-			if u.country_id == cid:
+			if not world_ref.army._hostile(cid, u.country_id):
 				continue
 			var d = u.pos.distance_to(pos)
 			if d <= blast_r:
 				var falloff = 1.0 - (d / blast_r) * 0.45
 				var dealt = dmg * falloff
-				u.hp -= dealt
-				if u.hp <= 0:
-					u.state = Unit.State.DEAD
-					if world_ref.fx != null:
-						world_ref.fx.spawn("dirt_burst", u.pos.round(), 8)
+				world_ref.army._damage(u, dealt, cid, pos)
 
 	# 2. Поражение укреплений / построек врага
 	if "mil" in world_ref and world_ref.mil != null:
 		for f in world_ref.mil.facilities:
-			if f.country_id == cid or not world_ref.mil.alive(f):
+			if f == null or not is_instance_valid(f) or not world_ref.army._hostile(cid, f.country_id) or not world_ref.mil.alive(f):
 				continue
 			if f.center_px().distance_to(pos) <= blast_r + 10.0:
-				if f.has_meta("hp"):
-					f.set_meta("hp", maxf(0.0, float(f.get_meta("hp")) - dmg * 0.7))
+				world_ref.army._damage(f, dmg * 0.7, cid, pos)
 
 
 # ==============================================================================
@@ -255,13 +250,6 @@ class ATGMClusterWorldLayer extends Node2D:
 		main_ref = main
 		world_ref = world
 		z_index = 55
-
-	func _unhandled_input(event: InputEvent) -> void:
-		# Горячая клавиша [K] для удобства (без создания плавающих окон)
-		if mod_ref != null and event is InputEventKey and event.pressed and not event.echo:
-			if event.keycode == KEY_K:
-				mod_ref.toggle_mode()
-				get_viewport().set_input_as_handled()
 
 	func _draw() -> void:
 		if mod_ref == null:
