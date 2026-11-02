@@ -1,6 +1,6 @@
 {
-  "version": 7,
-  "last_updated": "2026-11-01",
+  "version": 8,
+  "last_updated": "2026-11-02",
   "repository": "makkaX2/DroneFlames-Mods",
   "mods": [
     {
@@ -74,6 +74,18 @@
       "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/atgm_cluster.dfmod",
       "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/atgm_cluster.dfmod",
       "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/atgm_cluster/icon.png"
+    },
+    {
+      "id": "shahed_geran",
+      "name": "БПЛА «Герань-2» (Shahed-136)",
+      "version": "1.0.1",
+      "author": "@good_boy_irl & @tokio_drifter",
+      "type": "gameplay",
+      "description": "Тяжёлый дальнобойный БПЛА-камикадзе «Герань-2» с полной интеграцией в оригинальный Дронозавод и меню «Пуск дронов». Мощная боевая часть (150 ед. урона), расширенный радиус поражения, характерный пикирующий вой и звук мопеда.",
+      "archive": "shahed_geran.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/shahed_geran/shahed_geran.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/shahed_geran/shahed_geran.dfmod",
+      "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/shahed_geran/icon.png"
     }
   ]
 }
