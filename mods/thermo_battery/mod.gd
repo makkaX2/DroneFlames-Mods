@@ -93,16 +93,17 @@ func _ensure_hud(main: Node, world: Node) -> void:
 		fx_sys = ThermoFx.new()
 		fx_sys.setup(MAX_PARTICLES)
 
-	if main.hud != null and main.hud.pages.size() > 4:
-		var army_grid: GridContainer = main.hud.pages[4] as GridContainer
-		if army_grid != null and not main.hud.keys.has(CELL_KEY):
-			var cell: Control = main.hud._cell(CELL_KEY, "icon_mlrs", true)
-			if main.hud.key_labels.has(CELL_KEY):
-				var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
-				if lbl != null:
-					lbl.text = "СОЛНЦЕПЁК"
-			army_grid.add_child(cell)
-			army_grid.move_child(cell, mini(3, army_grid.get_child_count() - 1))
+	if main.hud != null:
+		if main.hud.pages.size() > 4:
+			var army_grid: GridContainer = main.hud.pages[4] as GridContainer
+			if army_grid != null and not main.hud.keys.has(CELL_KEY):
+				var cell: Control = main.hud._cell(CELL_KEY, "icon_mlrs", true)
+				if main.hud.key_labels.has(CELL_KEY):
+					var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
+					if lbl != null:
+						lbl.text = "СОЛНЦЕПЁК"
+				army_grid.add_child(cell)
+				army_grid.move_child(cell, mini(3, army_grid.get_child_count() - 1))
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
@@ -125,20 +126,29 @@ func _on_hud_action(nm: String) -> void:
 			if main_ref != null and main_ref.hud != null:
 				main_ref.hud.show_tip(
 					"Термобарическая батарея «Солнцепёк»",
-					"Бетонная площадка с двумя тяжёлыми огнемётными системами. Залп из 24 термобарических ракет выжигает всё живое и сносит постройки в зоне поражения. Стоимость: %d $ и %d металла, залп: %d $ и %d металла." % [BATT_COST_MONEY, BATT_COST_METAL, SALVO_COST_MONEY, SALVO_COST_METAL],
+					"Бетонная площадка с двумя тяжёлыми огнемётными системами ТОС-1А. Залп из 24 термобарических ракет выжигает всё живое и сносит постройки в зоне поражения. Стоимость: %d $ и %d металла, залп: %d $ и %d металла." % [BATT_COST_MONEY, BATT_COST_METAL, SALVO_COST_MONEY, SALVO_COST_METAL],
 					"")
 			toggle_placement()
 		"thermo_fire":
-			if selected_fac != null:
-				_start_targeting(selected_fac)
+			var f_fire: Facility = selected_fac
+			if f_fire == null and main_ref != null and "selected_fac" in main_ref:
+				f_fire = main_ref.selected_fac as Facility
+			if f_fire != null and _is_batt(f_fire):
+				_start_targeting(f_fire)
 		"thermo_cancel":
 			_cancel_targeting()
 		"thermo_repair":
-			if selected_fac != null:
-				_repair(selected_fac)
+			var f_rep: Facility = selected_fac
+			if f_rep == null and main_ref != null and "selected_fac" in main_ref:
+				f_rep = main_ref.selected_fac as Facility
+			if f_rep != null and _is_batt(f_rep):
+				_repair(f_rep)
 		"thermo_demolish":
-			if selected_fac != null:
-				_demolish(selected_fac)
+			var f_dem: Facility = selected_fac
+			if f_dem == null and main_ref != null and "selected_fac" in main_ref:
+				f_dem = main_ref.selected_fac as Facility
+			if f_dem != null and _is_batt(f_dem):
+				_demolish(f_dem)
 		"thermo_close":
 			selected_fac = null
 			if main_ref != null and "selected_fac" in main_ref:
@@ -151,6 +161,8 @@ func _is_batt(f: Facility) -> bool:
 		return false
 	if f.army_build == CELL_KEY or bool(f.get_meta("is_thermo", false)):
 		f.kind = Facility.Kind.CIV_FACTORY
+		f.set_meta("is_thermo", true)
+		f.set_meta("mod_facility", true)
 		f.moving = false
 		f.mdest = Vector2.ZERO
 		f.mpos = f.center_px()
@@ -316,6 +328,7 @@ func place_batt_at(cell: Vector2i) -> void:
 	f.mdest = Vector2.ZERO
 	f.mpos = f.center_px()
 	f.set_meta("is_thermo", true)
+	f.set_meta("mod_facility", true)
 	f.set_meta("state", ST_READY)
 	f.set_meta("state_t", 0.0)
 	f.set_meta("aim_cur", -PI * 0.5)
@@ -337,15 +350,22 @@ func place_batt_at(cell: Vector2i) -> void:
 			d.add_flag(cx, cy, WorldData.F_OCCUPIED)
 			d.set_biome(cx, cy, Biome.INDUSTRIAL)
 
-	cancel_placement()
+	if main_ref == null or not bool(main_ref.get("repeat_building")):
+		cancel_placement()
+	else:
+		if main_ref.hud != null:
+			main_ref.hud.show_toast("БАТАРЕЯ «СОЛНЦЕПЁК»: выберите место для следующей батареи (ПКМ — отмена)")
 	UiKit.snd("ui_build")
 	Sfx.play("vls_hatch_open", f.center_px())
 	if world_ref.fx != null:
 		world_ref.fx.spawn("dust_s", f.center_px().round(), 8)
 	_rescan_batts()
-	if main_ref != null and main_ref.hud != null:
-		main_ref.hud.show_toast("Батарея «Солнцепёк» построена! Выберите её и нажмите «ОГОНЬ».")
+	selected_fac = f
+	if main_ref != null:
 		main_ref.selected_fac = f
+		if main_ref.hud != null:
+			main_ref.hud.show_toast("Батарея «Солнцепёк» построена! Выберите её и нажмите «ОГОНЬ! >w<».")
+			_update_native_card(f)
 
 func _repair(f: Facility) -> void:
 	var p: Variant = world_ref.player
@@ -376,6 +396,9 @@ func _demolish(f: Facility) -> void:
 	world_ref.mil.facilities.erase(f)
 	batts.erase(f)
 	selected_fac = null
+	if targeting_fac == f:
+		targeting_fac = null
+		is_targeting = false
 	if main_ref != null and "selected_fac" in main_ref:
 		main_ref.selected_fac = null
 	if main_ref != null and main_ref.hud != null:
@@ -393,18 +416,21 @@ func _start_targeting(f: Facility) -> void:
 	is_targeting = true
 	is_placing = false
 	targeting_fac = f
+	selected_fac = f
+	if main_ref != null and "selected_fac" in main_ref:
+		main_ref.selected_fac = f
+	_update_targeting_card()
 	if main_ref != null and main_ref.hud != null:
-		main_ref.hud.show_toast("Выберите цель на карте (дальность %d–%d). ПКМ или Esc — отмена." % [int(RANGE_MIN), int(RANGE_MAX)])
+		main_ref.hud.show_toast("БАТАРЕЯ «СОЛНЦЕПЁК»: кликните по цели на карте (дальность %d–%d). ЛКМ — залп! >w<" % [int(RANGE_MIN), int(RANGE_MAX)])
 	UiKit.snd("ui_select")
 
 func _cancel_targeting() -> void:
 	is_targeting = false
 	targeting_fac = null
-	if main_ref != null and main_ref.hud != null:
-		if selected_fac != null:
-			_update_native_card(selected_fac)
-		else:
-			main_ref.hud.hide_ops()
+	if selected_fac != null and is_instance_valid(selected_fac) and _is_batt(selected_fac):
+		_update_native_card(selected_fac)
+	elif main_ref != null and main_ref.hud != null:
+		main_ref.hud.hide_ops()
 	UiKit.snd("ui_select")
 
 func try_fire_at(wpos: Vector2) -> void:
@@ -416,7 +442,7 @@ func try_fire_at(wpos: Vector2) -> void:
 	var dist: float = from_c.distance_to(wpos)
 	if dist < RANGE_MIN or dist > RANGE_MAX:
 		if main_ref != null and main_ref.hud != null:
-			main_ref.hud.show_toast("Цель вне досягаемости: дальность %d пикс., допустимо %d–%d." % [int(dist), int(RANGE_MIN), int(RANGE_MAX)])
+			main_ref.hud.show_toast("Цель вне зоны досягаемости: дальность %d пикс. (допустимо %d–%d)" % [int(dist), int(RANGE_MIN), int(RANGE_MAX)])
 		UiKit.snd("ui_error")
 		return
 	var p: Variant = world_ref.player
@@ -437,7 +463,8 @@ func try_fire_at(wpos: Vector2) -> void:
 		main_ref.overlay.ripple(wpos, "alert_red")
 	Sfx.play("alarm_general_quarters", from_c, -8.0)
 	if main_ref != null and main_ref.hud != null:
-		main_ref.hud.show_toast("Цель принята. Наведение установок...")
+		main_ref.hud.show_toast("Цель принята! Наведение батареи «Солнцепёк»...")
+		_update_native_card(f)
 
 func _tick_batteries(dt: float) -> void:
 	for f: Facility in batts:
@@ -703,32 +730,34 @@ func _update_native_card(f: Facility) -> void:
 
 	var acts: Array = []
 	if st == ST_READY:
-		var can_fire = p.money >= SALVO_COST_MONEY and p.metal >= SALVO_COST_METAL
-		acts.append(h._act("ЗАЛП\n%d $ · %d М" % [SALVO_COST_MONEY, SALVO_COST_METAL], "icon_target", "thermo_fire", can_fire))
+		var can_fire: bool = p.money >= SALVO_COST_MONEY and p.metal >= SALVO_COST_METAL
+		acts.append(h._act("ОГОНЬ! >w<\n%d$ · %dм" % [SALVO_COST_MONEY, SALVO_COST_METAL], "icon_target", "thermo_fire", can_fire))
 	elif st == ST_RELOAD:
 		acts.append(h._act("ЗАРЯЖАНИЕ\n%s" % h._mmss(left_s), "icon_restore", "none", false))
+	elif st == ST_AIM:
+		acts.append(h._act("НАВЕДЕНИЕ...", "icon_target", "none", false))
 	else:
-		acts.append(h._act("НАВЕДЕНИЕ", "icon_target", "none", false))
+		acts.append(h._act("ЗАЛП!", "icon_target", "none", false))
 
 	if f.hp < BATT_MAX_HP:
 		acts.append(h._act("РЕМОНТ\n%d $" % BATT_REPAIR_COST, "icon_restore", "thermo_repair", p.money >= BATT_REPAIR_COST))
 
-	var dact = h._act("СНОС\n+%d $" % BATT_REFUND, "icon_close", "thermo_demolish", true)
+	var dact: Dictionary = h._act("СНОС\n+%d $" % BATT_REFUND, "icon_close", "thermo_demolish", true)
 	dact["red"] = true
 	acts.append(dact)
 
-	acts.append(h._act("ЗАКРЫТЬ", "icon_arrow_down", "thermo_close", true))
+	acts.append(h._act("ЗАКРЫТЬ ^^", "icon_close", "thermo_close", true))
 	h._fill_acts("thermo_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
 	if main_ref == null or main_ref.hud == null:
 		return
 	var h: Variant = main_ref.hud
-	h._card("thermo_targeting", "icon_mlrs", "НАВЕДЕНИЕ БАТАРЕИ «СОЛНЦЕПЁК»", "Выберите цель на карте (ЛКМ/Тап). ПКМ или Esc — отмена.", false, false, true)
-	h._set_info("ЗОНА ПОРАЖЕНИЯ — КРУГ %d ПИКС. · ДАЛЬНОСТЬ: %d–%d ПИКС." % [int(SPREAD_R * 2.0), int(RANGE_MIN), int(RANGE_MAX)], false)
+	h._card("thermo_targeting", "icon_mlrs", "НАВЕДЕНИЕ БАТАРЕИ «СОЛНЦЕПЁК»", "Кликните ЛКМ по карте для залпа · ПКМ или Esc — отмена", false, false, true)
+	h._set_info("ЗОНА ПОРАЖЕНИЯ: РАДИУС %d ПИКС. · ДАЛЬНОСТЬ %d–%d ПИКС." % [int(SPREAD_R * 2.0), int(RANGE_MIN), int(RANGE_MAX)], false)
 	h.ops_detail.visible = false
 	var acts: Array = []
-	acts.append(h._act("ОТМЕНА", "icon_close", "thermo_cancel", true))
+	acts.append(h._act("ОТМЕНА ^^", "icon_close", "thermo_cancel", true))
 	h._fill_acts("thermo_target_acts", acts)
 
 # ---------------------------------------------------------------- отрисовка
@@ -1007,20 +1036,7 @@ class ThermoWorldLayer extends Node2D:
 	func _unhandled_input(event: InputEvent) -> void:
 		if mod == null or world == null or main == null:
 			return
-		var is_press: bool = false
-		var is_cancel: bool = false
-		var ev_pos: Vector2 = Vector2.ZERO
-		if event is InputEventMouseButton:
-			if event.pressed:
-				if event.button_index == MOUSE_BUTTON_LEFT:
-					is_press = true
-					ev_pos = event.position
-				elif event.button_index == MOUSE_BUTTON_RIGHT:
-					is_cancel = true
-		elif event is InputEventScreenTouch:
-			if event.pressed:
-				is_press = true
-				ev_pos = event.position
+
 		if event is InputEventKey and event.pressed and not event.echo:
 			if event.keycode == KEY_ESCAPE:
 				if mod.is_placing:
@@ -1031,26 +1047,50 @@ class ThermoWorldLayer extends Node2D:
 					mod._cancel_targeting()
 					get_viewport().set_input_as_handled()
 					return
-		if is_press:
-			var wp: Vector2 = main.cam.screen_to_world(ev_pos) if main.cam != null else ev_pos
-			var cell: Vector2i = Vector2i((wp / float(GameWorld.CELL)).floor())
-			if mod.is_placing:
-				mod.place_batt_at(cell)
-				get_viewport().set_input_as_handled()
-				return
-			elif mod.is_targeting:
-				mod.try_fire_at(wp)
-				get_viewport().set_input_as_handled()
-				return
-		elif is_cancel:
-			if mod.is_placing:
-				mod.cancel_placement()
-				get_viewport().set_input_as_handled()
-				return
-			elif mod.is_targeting:
-				mod._cancel_targeting()
-				get_viewport().set_input_as_handled()
-				return
+
+		if event is InputEventMouseButton:
+			if event.pressed:
+				if event.button_index == MOUSE_BUTTON_LEFT:
+					var wp: Vector2 = main.cam.screen_to_world(event.position) if main.cam != null else event.position
+					var cell: Vector2i = Vector2i((wp / float(GameWorld.CELL)).floor())
+					if mod.is_placing:
+						mod.place_batt_at(cell)
+						get_viewport().set_input_as_handled()
+						return
+					elif mod.is_targeting:
+						mod.try_fire_at(wp)
+						get_viewport().set_input_as_handled()
+						return
+				elif event.button_index == MOUSE_BUTTON_RIGHT:
+					if mod.is_placing:
+						mod.cancel_placement()
+						get_viewport().set_input_as_handled()
+						return
+					elif mod.is_targeting:
+						mod._cancel_targeting()
+						get_viewport().set_input_as_handled()
+						return
+			else:
+				if mod.is_placing or mod.is_targeting:
+					get_viewport().set_input_as_handled()
+					return
+
+		elif event is InputEventScreenTouch:
+			if event.pressed:
+				var wp: Vector2 = main.cam.screen_to_world(event.position) if main.cam != null else event.position
+				var cell: Vector2i = Vector2i((wp / float(GameWorld.CELL)).floor())
+				if mod.is_placing:
+					mod.place_batt_at(cell)
+					get_viewport().set_input_as_handled()
+					return
+				elif mod.is_targeting:
+					mod.try_fire_at(wp)
+					get_viewport().set_input_as_handled()
+					return
+			else:
+				if mod.is_placing or mod.is_targeting:
+					get_viewport().set_input_as_handled()
+					return
 
 	func _draw() -> void:
 		if mod == null or world == null or main == null:
