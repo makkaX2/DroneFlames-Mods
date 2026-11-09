@@ -121,7 +121,43 @@ func _ensure_hud(main: Node, world: Node) -> void:
 func _on_world_started(main: Node, world: Node) -> void:
 	_cleanup_nodes()
 	_ensure_hud(main, world)
+	if world != null:
+		world.set_meta("nuclear_strike_mod", self)
 	print("[NuclearStrike] Injected nuclear_silo into Army tab and world layers created.")
+
+func launch_strike_from_silo(f: Facility, target_world_pos: Vector2) -> bool:
+	if f == null or not is_instance_valid(f) or not bool(f.get_meta("has_warhead", false)):
+		return false
+	f.set_meta("has_warhead", false)
+	f.missiles = 0
+	if targeting_silo == f:
+		targeting_silo = null
+		is_targeting = false
+		target_point = Vector2.INF
+	var start_pos: Vector2 = f.center_px()
+	var dist: float = start_pos.distance_to(target_world_pos)
+	var flight_duration: float = clampf(5.5 + dist * 0.002, 6.5, 9.5)
+	if ClassDB.class_exists("Sfx"):
+		Sfx.play("vls_hatch_open", start_pos)
+		Sfx.play("missile_launch", start_pos)
+		Sfx.play("hyper_launch", start_pos)
+	if world_ref != null and world_ref.fx != null:
+		world_ref.fx.spawn("tel_flash", start_pos.round(), 6)
+		world_ref.fx.spawn("launch_cloud", start_pos.round(), 5)
+		world_ref.fx.spawn("shockwave", start_pos.round(), 1)
+	if world_ref != null and world_ref.has_method("camera_shake_launch"):
+		world_ref.camera_shake_launch(start_pos)
+	var m: Dictionary = {
+		"from": start_pos,
+		"target": target_world_pos,
+		"t": 0.0,
+		"duration": flight_duration,
+		"whistled": false,
+		"country_id": f.country_id,
+		"trail": []
+	}
+	active_missiles.append(m)
+	return true
 
 func _on_nuke_sheet_target() -> void:
 	if is_placing:

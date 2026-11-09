@@ -131,7 +131,36 @@ func _ensure_hud(main: Node, world: Node) -> void:
 func _on_world_started(main: Node, world: Node) -> void:
 	_cleanup_nodes()
 	_ensure_hud(main, world)
+	if world != null:
+		world.set_meta("thermo_battery_mod", self)
 	print("[ThermoBattery] Cell injected into Army tab, world layers created.")
+
+func launch_salvo_at(f: Facility, wpos: Vector2) -> bool:
+	if f == null or not is_instance_valid(f) or not _batt_alive(f):
+		return false
+	if int(f.get_meta("state", ST_READY)) != ST_READY:
+		return false
+	var from_c: Vector2 = f.center_px()
+	var dist: float = from_c.distance_to(wpos)
+	if dist < RANGE_MIN or dist > RANGE_MAX:
+		return false
+	var p: Variant = world_ref.player if world_ref != null else null
+	if p != null:
+		if p.money < SALVO_COST_MONEY or p.metal < SALVO_COST_METAL:
+			return false
+		p.money -= SALVO_COST_MONEY
+		p.metal -= SALVO_COST_METAL
+	f.set_meta("target", wpos)
+	f.set_meta("aim_tgt", (wpos - from_c).angle())
+	f.set_meta("state", ST_AIM)
+	f.set_meta("state_t", 2.5)
+	if targeting_fac == f:
+		is_targeting = false
+		targeting_fac = null
+	if main_ref != null and "overlay" in main_ref and main_ref.overlay != null:
+		main_ref.overlay.ripple(wpos, "alert_red")
+	Sfx.play("alarm_general_quarters", from_c, -8.0)
+	return true
 
 func _on_thermo_sheet_target() -> void:
 	if is_placing:
