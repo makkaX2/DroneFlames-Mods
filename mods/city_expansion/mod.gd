@@ -1,4 +1,3 @@
-class_name CityExpansionMod
 extends RefCounted
 
 ## Мод «Расширение и развитие городов» для DroneFlames PC Port
@@ -90,10 +89,16 @@ func _on_match_tick(main: Node, world: Node, _delta: float) -> void:
 
 	if main == null or main.hud == null or world == null:
 		return
-	if world.player != null:
+
+	var time_scale: float = 1.0
+	if "time_scale" in world:
+		time_scale = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = _delta * time_scale
+
+	if world.player != null and sim_delta > 0.0:
 		for city: City in world.cities:
 			if city != null and city.country_id == world.player.id:
-				_update_population(city, _delta)
+				_update_population(city, sim_delta)
 
 	var ops_k = String(main.hud._ops_key)
 	if ops_k.begins_with("city"):

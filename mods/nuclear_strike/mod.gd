@@ -14,9 +14,6 @@ var world_ref: Node = null
 var world_layer: Node2D = null
 var flash_layer: CanvasLayer = null
 var flash_rect: ColorRect = null
-var ctl_layer: CanvasLayer = null
-var ctl_panel: PanelContainer = null
-var ctl_btns: Dictionary = {}
 
 var is_placing: bool = false
 var is_targeting: bool = false
@@ -68,11 +65,6 @@ func _cleanup_nodes() -> void:
 	if flash_layer != null and is_instance_valid(flash_layer):
 		flash_layer.queue_free()
 		flash_layer = null
-	if ctl_layer != null and is_instance_valid(ctl_layer):
-		ctl_layer.queue_free()
-	ctl_layer = null
-	ctl_panel = null
-	ctl_btns.clear()
 
 func _on_world_started(main: Node, world: Node) -> void:
 	main_ref = main
@@ -109,7 +101,6 @@ func _on_world_started(main: Node, world: Node) -> void:
 	flash_rect.color = Color(1.0, 0.96, 0.75, 0.0)
 	flash_layer.add_child(flash_rect)
 	main.add_child(flash_layer)
-	_build_controls(main)
 
 	print("[NuclearStrike] Injected nuclear_silo cell into Army tab and world layers created.")
 
@@ -180,9 +171,15 @@ func _is_silo(f: Facility) -> bool:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	_tick_silos(delta)
-	_tick_missiles(delta)
-	_tick_explosions(delta)
+
+	var ts: float = 1.0
+	if world != null and "time_scale" in world:
+		ts = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = delta * ts
+
+	_tick_silos(sim_delta)
+	_tick_missiles(sim_delta)
+	_tick_explosions(sim_delta)
 
 	# 1. Если активен режим наведения термоядерного удара — отображаем специальную карточку прицеливания
 	if is_targeting and targeting_silo != null and is_instance_valid(targeting_silo):
@@ -199,57 +196,8 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	else:
 		selected_fac = null
 
-	_update_controls()
-
 	if world_layer != null and is_instance_valid(world_layer):
 		world_layer.queue_redraw()
-
-# Собственные кнопки мода: создаются один раз и не пересоздаются каждый кадр,
-# поэтому клик (нажатие + отпускание) всегда попадает в одну и ту же кнопку.
-func _build_controls(main: Node) -> void:
-	ctl_layer = CanvasLayer.new()
-	ctl_layer.layer = 119
-	ctl_panel = PanelContainer.new()
-	ctl_panel.visible = false
-	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	ctl_panel.add_child(row)
-	var defs: Array = [
-		["target", "ЯДЕРНЫЙ УДАР", "nuke_target"],
-		["launch", "ПУСК МБР (Enter)", "nuke_launch_confirm"],
-		["reset", "СБРОС ЦЕЛИ", "nuke_target_reset"],
-		["cancel", "ОТМЕНА", "nuke_cancel_target"],
-	]
-	for d: Array in defs:
-		var b: Button = Button.new()
-		b.text = String(d[1])
-		b.custom_minimum_size = Vector2(150, 42)
-		b.focus_mode = Control.FOCUS_NONE
-		b.pressed.connect(_on_hud_action.bind(String(d[2])))
-		row.add_child(b)
-		ctl_btns[String(d[0])] = b
-	ctl_layer.add_child(ctl_panel)
-	main.add_child(ctl_layer)
-
-func _update_controls() -> void:
-	if ctl_panel == null or not is_instance_valid(ctl_panel):
-		return
-	var tgt_mode: bool = is_targeting and targeting_silo != null and is_instance_valid(targeting_silo)
-	var armed: bool = (not tgt_mode) and selected_fac != null and is_instance_valid(selected_fac) and bool(selected_fac.get_meta("has_warhead", false))
-	var has_tgt: bool = target_point != Vector2.INF
-	ctl_panel.visible = tgt_mode or armed
-	(ctl_btns["target"] as Button).visible = armed
-	(ctl_btns["launch"] as Button).visible = tgt_mode
-	(ctl_btns["launch"] as Button).disabled = not has_tgt
-	(ctl_btns["reset"] as Button).visible = tgt_mode and has_tgt
-	(ctl_btns["cancel"] as Button).visible = tgt_mode
-	if not ctl_panel.visible:
-		return
-	var vp: Vector2 = ctl_panel.get_viewport().get_visible_rect().size
-	var hy: float = vp.y
-	if main_ref != null and main_ref.hud != null and main_ref.hud.get("holder") != null:
-		hy = float(main_ref.hud.holder.position.y)
-	ctl_panel.position = Vector2(floorf((vp.x - ctl_panel.size.x) * 0.5), hy - ctl_panel.size.y - 12.0)
 
 func toggle_placement() -> void:
 	if is_placing:

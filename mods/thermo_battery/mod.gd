@@ -35,9 +35,6 @@ var world_ref: Node = null
 
 var world_layer: Node2D = null
 var glow_layer: Node2D = null
-var ctl_layer: CanvasLayer = null
-var ctl_panel: PanelContainer = null
-var ctl_btns: Dictionary = {}
 
 var is_placing: bool = false
 var is_targeting: bool = false
@@ -86,11 +83,6 @@ func _cleanup_nodes() -> void:
 		world_layer.queue_free()
 	world_layer = null
 	glow_layer = null
-	if ctl_layer != null and is_instance_valid(ctl_layer):
-		ctl_layer.queue_free()
-	ctl_layer = null
-	ctl_panel = null
-	ctl_btns.clear()
 
 func _on_world_started(main: Node, world: Node) -> void:
 	main_ref = main
@@ -107,7 +99,7 @@ func _on_world_started(main: Node, world: Node) -> void:
 				if main.hud.key_labels.has(CELL_KEY):
 					var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
 					if lbl != null:
-						lbl.text = "СОЛНЦЕПЁК\nБАТАРЕЯ >w<"
+						lbl.text = "ТОС-1А\nСОЛНЦЕПЁК"
 				army_grid.add_child(cell)
 				army_grid.move_child(cell, mini(3, army_grid.get_child_count() - 1))
 		if not main.hud.action.is_connected(_on_hud_action):
@@ -119,7 +111,6 @@ func _on_world_started(main: Node, world: Node) -> void:
 	glow_layer = ThermoGlowLayer.new()
 	glow_layer.setup(self)
 	world_layer.add_child(glow_layer)
-	_build_controls(main)
 	print("[ThermoBattery] Cell injected into Army tab, world layers created.")
 
 func _on_hud_action(nm: String) -> void:
@@ -180,7 +171,7 @@ func _rescan_batts() -> void:
 func _gdt(delta: float) -> float:
 	var ts: float = 1.0
 	if world_ref != null and "time_scale" in world_ref:
-		ts = clampf(float(world_ref.time_scale), 0.0, 6.0)
+		ts = maxf(0.0, float(world_ref.time_scale))
 	return delta * ts
 
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
@@ -188,9 +179,9 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	world_ref = world
 	var dt: float = _gdt(delta)
 	gtime += dt
-	lamp_t += delta
-	shake_cd = maxf(0.0, shake_cd - delta)
-	batts_scan_t -= delta
+	lamp_t += dt
+	shake_cd = maxf(0.0, shake_cd - dt)
+	batts_scan_t -= dt
 	if batts_scan_t <= 0.0:
 		batts_scan_t = 0.6
 		_rescan_batts()
@@ -212,110 +203,12 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	else:
 		selected_fac = null
 
-	_update_controls()
-
 	var busy: bool = is_placing or is_targeting or not batts.is_empty() or (fx_sys != null and fx_sys.n > 0) or not rockets.is_empty() or not rings.is_empty() or not flashes.is_empty()
 	if busy:
 		if world_layer != null and is_instance_valid(world_layer):
 			world_layer.queue_redraw()
 		if glow_layer != null and is_instance_valid(glow_layer):
 			glow_layer.queue_redraw()
-
-# ---------------------------------------------------------------- управление
-func _sbox(col: Color, border: Color) -> StyleBoxFlat:
-	var s: StyleBoxFlat = StyleBoxFlat.new()
-	s.bg_color = col
-	s.border_color = border
-	s.set_border_width_all(2)
-	s.set_corner_radius_all(12)
-	s.content_margin_left = 12.0
-	s.content_margin_right = 12.0
-	s.content_margin_top = 6.0
-	s.content_margin_bottom = 6.0
-	return s
-
-func _cute_btn(b: Button) -> void:
-	b.add_theme_stylebox_override("normal", _sbox(Color(0.93, 0.45, 0.72, 0.95), Color(1.0, 0.85, 0.95)))
-	b.add_theme_stylebox_override("hover", _sbox(Color(0.98, 0.58, 0.80, 1.0), Color(1.0, 1.0, 1.0)))
-	b.add_theme_stylebox_override("pressed", _sbox(Color(0.80, 0.32, 0.60, 1.0), Color(1.0, 0.85, 0.95)))
-	b.add_theme_stylebox_override("disabled", _sbox(Color(0.45, 0.30, 0.42, 0.85), Color(0.70, 0.55, 0.66)))
-	b.add_theme_color_override("font_color", Color.WHITE)
-	b.add_theme_color_override("font_hover_color", Color.WHITE)
-	b.add_theme_color_override("font_pressed_color", Color.WHITE)
-	b.add_theme_color_override("font_disabled_color", Color(0.85, 0.72, 0.80, 0.8))
-
-func _set_btn(key: String, vis: bool) -> void:
-	if ctl_btns.has(key):
-		(ctl_btns[key] as Button).visible = vis
-
-func _place_panel(ctl: Control) -> void:
-	var vp: Vector2 = ctl.get_viewport().get_visible_rect().size
-	var hy: float = vp.y
-	if main_ref != null and main_ref.hud != null and main_ref.hud.get("holder") != null:
-		hy = float(main_ref.hud.holder.position.y)
-	ctl.position = Vector2(floorf((vp.x - ctl.size.x) * 0.5), hy - ctl.size.y - 12.0)
-
-func _build_controls(main: Node) -> void:
-	ctl_layer = CanvasLayer.new()
-	ctl_layer.layer = 119
-	ctl_panel = PanelContainer.new()
-	ctl_panel.visible = false
-	ctl_panel.add_theme_stylebox_override("panel", _sbox(Color(0.16, 0.09, 0.22, 0.88), Color(0.98, 0.60, 0.82)))
-	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	ctl_panel.add_child(row)
-	var defs: Array = [
-		["fire", "ОГОНЬ! >w< (%d$ · %dм)" % [SALVO_COST_MONEY, SALVO_COST_METAL], "thermo_fire"],
-		["busy", "...", "none"],
-		["cancel", "ОТМЕНА ^^", "thermo_cancel"],
-		["repair", "РЕМОНТ %d$" % BATT_REPAIR_COST, "thermo_repair"],
-		["demolish", "СНОС", "thermo_demolish"],
-		["close", "ЗАКРЫТЬ", "thermo_close"],
-	]
-	for d: Array in defs:
-		var btn: Button = Button.new()
-		btn.text = String(d[1])
-		btn.custom_minimum_size = Vector2(130, 42)
-		btn.focus_mode = Control.FOCUS_NONE
-		_cute_btn(btn)
-		if String(d[2]) == "none":
-			btn.disabled = true
-		else:
-			btn.pressed.connect(_on_hud_action.bind(String(d[2])))
-		row.add_child(btn)
-		ctl_btns[String(d[0])] = btn
-	ctl_layer.add_child(ctl_panel)
-	main.add_child(ctl_layer)
-
-func _update_controls() -> void:
-	if ctl_panel == null or not is_instance_valid(ctl_panel):
-		return
-	var tgt_mode: bool = is_targeting and targeting_fac != null and is_instance_valid(targeting_fac)
-	var sel: bool = (not tgt_mode) and selected_fac != null and is_instance_valid(selected_fac)
-	ctl_panel.visible = tgt_mode or sel
-	if not ctl_panel.visible:
-		return
-	var st: int = ST_READY
-	var left_s: float = 0.0
-	var hurt: bool = false
-	if sel:
-		st = int(selected_fac.get_meta("state", ST_READY))
-		left_s = maxf(0.0, float(selected_fac.get_meta("state_t", 0.0)))
-		hurt = selected_fac.hp < BATT_MAX_HP
-	_set_btn("fire", sel and st == ST_READY)
-	_set_btn("busy", sel and st != ST_READY)
-	_set_btn("cancel", tgt_mode)
-	_set_btn("repair", sel and hurt)
-	_set_btn("demolish", sel)
-	_set_btn("close", sel)
-	if sel and st != ST_READY and ctl_btns.has("busy"):
-		var label: String = "НАВЕДЕНИЕ..."
-		if st == ST_FIRE:
-			label = "ЗАЛП!"
-		elif st == ST_RELOAD:
-			label = "ЗАРЯЖАНИЕ... %02d" % int(ceilf(left_s))
-		(ctl_btns["busy"] as Button).text = label
-	_place_panel(ctl_panel)
 
 # ---------------------------------------------------------------- постройка
 func toggle_placement() -> void:
@@ -569,7 +462,7 @@ func _tick_batteries(dt: float) -> void:
 					f.set_meta("state", ST_READY)
 					f.set_meta("state_t", 0.0)
 					if f.country_id == int(world_ref.player.id) and main_ref != null and main_ref.hud != null:
-						main_ref.hud.show_toast("Батарея «Солнцепёк» перезаряжена и готова к залпу ^^")
+						main_ref.hud.show_toast("Батарея «Солнцепёк» перезаряжена и готова к залпу!")
 						UiKit.snd("ui_select")
 
 func launcher_pos(f: Facility, side: int) -> Vector2:
@@ -799,16 +692,36 @@ func _update_native_card(f: Facility) -> void:
 	h._set_info(info, st == ST_READY)
 	h.ops_detail.text = "Две тяжёлые огнемётные системы на бетонной площадке. Залп из 24 термобарических снарядов создаёт огненный шторм: объёмный взрыв выжигает пехоту, калечит технику и сносит постройки. Для залпа нужны деньги и металл."
 	h.ops_detail.visible = true
-	h._fill_acts("thermo_acts_%d" % f.id, [])
+
+	var acts: Array = []
+	if st == ST_READY:
+		var can_fire = p.money >= SALVO_COST_MONEY and p.metal >= SALVO_COST_METAL
+		acts.append(h._act("ЗАЛП\n%d $ · %d М" % [SALVO_COST_MONEY, SALVO_COST_METAL], "icon_target", "thermo_fire", can_fire))
+	elif st == ST_RELOAD:
+		acts.append(h._act("ЗАРЯЖАНИЕ\n%s" % h._mmss(left_s), "icon_restore", "none", false))
+	else:
+		acts.append(h._act("НАВЕДЕНИЕ", "icon_target", "none", false))
+
+	if f.hp < BATT_MAX_HP:
+		acts.append(h._act("РЕМОНТ\n%d $" % BATT_REPAIR_COST, "icon_restore", "thermo_repair", p.money >= BATT_REPAIR_COST))
+
+	var dact = h._act("СНОС\n+%d $" % BATT_REFUND, "icon_close", "thermo_demolish", true)
+	dact["red"] = true
+	acts.append(dact)
+
+	acts.append(h._act("ЗАКРЫТЬ", "icon_arrow_down", "thermo_close", true))
+	h._fill_acts("thermo_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
 	if main_ref == null or main_ref.hud == null:
 		return
 	var h: Variant = main_ref.hud
-	h._card("thermo_targeting", "icon_mlrs", "НАВЕДЕНИЕ БАТАРЕИ", "Выберите цель на карте (ЛКМ). ПКМ или Esc — отмена.", false, false, true)
-	h._set_info("ЗОНА ПОРАЖЕНИЯ — КРУГ ОКОЛО %d ПИКС.\nДАЛЬНОСТЬ: %d–%d ПИКС." % [int(SPREAD_R * 2.0), int(RANGE_MIN), int(RANGE_MAX)], false)
+	h._card("thermo_targeting", "icon_mlrs", "НАВЕДЕНИЕ БАТАРЕИ «СОЛНЦЕПЁК»", "Выберите цель на карте (ЛКМ/Тап). ПКМ или Esc — отмена.", false, false, true)
+	h._set_info("ЗОНА ПОРАЖЕНИЯ — КРУГ %d ПИКС. · ДАЛЬНОСТЬ: %d–%d ПИКС." % [int(SPREAD_R * 2.0), int(RANGE_MIN), int(RANGE_MAX)], false)
 	h.ops_detail.visible = false
-	h._fill_acts("thermo_target_acts", [])
+	var acts: Array = []
+	acts.append(h._act("ОТМЕНА", "icon_close", "thermo_cancel", true))
+	h._fill_acts("thermo_target_acts", acts)
 
 # ---------------------------------------------------------------- отрисовка
 func draw_batteries(ci: CanvasItem) -> void:

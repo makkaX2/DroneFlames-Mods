@@ -12,9 +12,6 @@ var main_ref: Node = null
 var world_ref: Node = null
 
 var world_layer: Node2D = null
-var ctl_layer: CanvasLayer = null
-var ctl_panel: PanelContainer = null
-var ctl_btns: Dictionary = {}
 
 var is_placing: bool = false
 var is_targeting: bool = false
@@ -131,11 +128,6 @@ func _cleanup_nodes() -> void:
 	if world_layer != null and is_instance_valid(world_layer):
 		world_layer.queue_free()
 		world_layer = null
-	if ctl_layer != null and is_instance_valid(ctl_layer):
-		ctl_layer.queue_free()
-		ctl_layer = null
-	ctl_panel = null
-	ctl_btns.clear()
 
 func _on_world_started(main: Node, world: Node) -> void:
 	main_ref = main
@@ -165,9 +157,6 @@ func _on_world_started(main: Node, world: Node) -> void:
 	var input_overlay = IskanderInputOverlay.new(self, main, world)
 	world.add_child(input_overlay)
 
-	# Плавающая панель управления ОТРК
-	_build_controls(main)
-
 func _on_hud_action(action_name: String) -> void:
 	match action_name:
 		"iskander_tel":
@@ -187,6 +176,22 @@ func _on_hud_action(action_name: String) -> void:
 				demolish_tel(selected_fac)
 		"iskander_cancel_target":
 			cancel_targeting()
+		"iskander_repair":
+			if selected_fac != null and is_instance_valid(selected_fac):
+				var p = world_ref.player
+				if p != null and p.money >= 250:
+					p.money -= 250
+					selected_fac.set_meta("hp", TEL_MAX_HP)
+					if ClassDB.class_exists("UiKit"):
+						UiKit.snd("ui_build")
+					if main_ref != null and main_ref.hud != null:
+						main_ref.hud.show_toast("Комплекс ОТРК «Искандер-М» полностью отремонтирован!")
+		"iskander_close":
+			selected_fac = null
+			if main_ref != null and "selected_fac" in main_ref:
+				main_ref.selected_fac = null
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.hide_ops()
 
 func toggle_placement() -> void:
 	if is_placing:
@@ -228,18 +233,21 @@ func can_place_at(cell: Vector2i) -> bool:
 		return false
 	var p = world_ref.player
 	var d = world_ref.data
+	if cell.x < 2 or cell.y < 2 or cell.x + TEL_SIZE.x >= d.w - 2 or cell.y + TEL_SIZE.y >= d.h - 2:
+		return false
 	for dy in range(TEL_SIZE.y):
 		for dx in range(TEL_SIZE.x):
 			var cx = cell.x + dx
 			var cy = cell.y + dy
-			if not d.in_bounds(cx, cy):
+			if not d.inside(cx, cy):
 				return false
-			if d.is_occupied(cx, cy):
+			if d.has_flag(cx, cy, WorldData.F_OCCUPIED):
 				return false
 			var b = d.get_biome(cx, cy)
-			if b <= Biome.RIVER or b == Biome.ROCK:
+			if Biome.is_water(b) or b == Biome.ROCK:
 				return false
-			if d.get_owner(cx, cy) != p.id:
+			var owner_id = d.get_owner_id(cx, cy) if d.has_method("get_owner_id") else d.get_owner(cx, cy)
+			if owner_id != p.id:
 				return false
 	return true
 
@@ -353,79 +361,96 @@ func demolish_tel(f: Facility) -> void:
 	if main_ref != null and main_ref.hud != null:
 		main_ref.hud.show_toast("Комплекс ОТРК «Искандер-М» демонтирован (+%d $)." % TEL_REFUND)
 
-func _build_controls(main: Node) -> void:
-	ctl_layer = CanvasLayer.new()
-	ctl_layer.layer = 119
-	ctl_panel = PanelContainer.new()
-	ctl_panel.visible = false
-	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	ctl_panel.add_child(row)
-
-	var defs: Array = [
-		["target", "ЦЕЛЬ УДАРА", "iskander_target"],
-		["launch", "ПУСК 9М723 (Enter)", "iskander_launch_confirm"],
-		["reload", "ПЕРЕЗАРЯДКА (800$)", "iskander_reload"],
-		["demolish", "ДЕМОНТАЖ", "iskander_demolish"],
-		["cancel", "ОТМЕНА", "iskander_cancel_target"]
-	]
-	for d: Array in defs:
-		var b: Button = Button.new()
-		b.text = String(d[1])
-		b.custom_minimum_size = Vector2(140, 38)
-		b.focus_mode = Control.FOCUS_NONE
-		b.pressed.connect(_on_hud_action.bind(String(d[2])))
-		row.add_child(b)
-		ctl_btns[String(d[0])] = b
-	ctl_layer.add_child(ctl_panel)
-	main.add_child(ctl_layer)
-
-func _update_controls() -> void:
-	if ctl_panel == null or not is_instance_valid(ctl_panel):
+func _update_native_card(f: Facility) -> void:
+	if main_ref == null or main_ref.hud == null:
 		return
-	var tgt_mode: bool = is_targeting and targeting_tel != null and is_instance_valid(targeting_tel)
-	var armed: bool = (not tgt_mode) and selected_fac != null and is_instance_valid(selected_fac) and bool(selected_fac.get_meta("is_iskander_tel", false))
-	ctl_panel.visible = tgt_mode or armed
-
-	if not ctl_panel.visible:
+	var h: Variant = main_ref.hud
+	var p: Variant = world_ref.player
+	if p == null:
 		return
+	var has_missile = bool(f.get_meta("has_missile", false))
+	var is_reloading = bool(f.get_meta("is_reloading", false))
+	var rem_t = float(f.get_meta("reload_timer", 0.0))
+	var hp = float(f.get_meta("hp", TEL_MAX_HP))
 
-	var has_missile: bool = selected_fac != null and bool(selected_fac.get_meta("has_missile", false))
-	var is_reloading: bool = selected_fac != null and bool(selected_fac.get_meta("is_reloading", false))
-	var has_tgt: bool = target_point != Vector2.INF
+	h._card("iskander_tel_%d" % f.id, "icon_target", "ОТРК «Искандер-М» (9К720)", "Оперативно-тактический ракетный комплекс · Расчёт #%d" % f.id, false, false, true)
+	var info: String = ""
+	if has_missile:
+		info = "СТАТУС: БОЕГОТОВ · КВАЗИБАЛЛИСТИЧЕСКАЯ РАКЕТА 9М723 НА НАПРАВЛЯЮЩЕЙ\nДАЛЬНОСТЬ: ГЛОБАЛЬНАЯ · УРОН: 650 ЕД. · ПРОЧНОСТЬ: %d/%d" % [int(hp), int(TEL_MAX_HP)]
+	elif is_reloading:
+		info = "СТАТУС: ТРАНСПОРТНО-ЗАРЯЖАЮЩАЯ МАШИНА ВЕДЁТ ПЕРЕЗАРЯДКУ... %s\nПРОЧНОСТЬ: %d/%d" % [h._mmss(rem_t), int(hp), int(TEL_MAX_HP)]
+	else:
+		info = "СТАТУС: ПУСКОВАЯ УСТАНОВКА ПУСТА · ТРЕБУЕТСЯ ПЕРЕЗАРЯДКА (%d$ · %d МЕТАЛЛА)\nПРОЧНОСТЬ: %d/%d" % [RELOAD_COST_MONEY, RELOAD_COST_METAL, int(hp), int(TEL_MAX_HP)]
+	h._set_info(info, has_missile)
+	h.ops_detail.text = "Высокоточный оперативно-тактический комплекс ракетных войск. Запускает квазибаллистическую ракету 9М723 по любой точке карты: проникающая боевая часть сокрушает узлы обороны, базы ПВО, мосты и бронетехнику."
+	h.ops_detail.visible = true
 
-	(ctl_btns["target"] as Button).visible = armed and has_missile
-	(ctl_btns["launch"] as Button).visible = tgt_mode
-	(ctl_btns["launch"] as Button).disabled = not has_tgt
-	(ctl_btns["reload"] as Button).visible = armed and (not has_missile) and (not is_reloading)
-	(ctl_btns["demolish"] as Button).visible = armed and (not tgt_mode)
-	(ctl_btns["cancel"] as Button).visible = tgt_mode
+	var acts: Array = []
+	if has_missile:
+		acts.append(h._act("УДАР 9М723", "icon_target", "iskander_target", true))
+	elif is_reloading:
+		acts.append(h._act("ЗАРЯЖАНИЕ\n%s" % h._mmss(rem_t), "icon_restore", "none", false))
+	else:
+		var can_reload = p.money >= RELOAD_COST_MONEY and p.metal >= RELOAD_COST_METAL
+		acts.append(h._act("ЗАРЯДИТЬ\n%d $ · %d М" % [RELOAD_COST_MONEY, RELOAD_COST_METAL], "icon_restore", "iskander_reload", can_reload))
 
-	var vp: Vector2 = ctl_panel.get_viewport().get_visible_rect().size
-	var hy: float = vp.y
-	if main_ref != null and main_ref.hud != null and main_ref.hud.get("holder") != null:
-		hy = float(main_ref.hud.holder.position.y)
-	ctl_panel.position = Vector2(floorf((vp.x - ctl_panel.size.x) * 0.5), hy - ctl_panel.size.y - 12.0)
+	if hp < TEL_MAX_HP:
+		acts.append(h._act("РЕМОНТ\n250 $", "icon_restore", "iskander_repair", p.money >= 250))
 
-func _on_match_tick(_main: Node, _world: Node, delta: float) -> void:
-	# Проверка выбранной базы игроком
-	if main_ref != null and "selected_fac" in main_ref and main_ref.selected_fac != null and is_instance_valid(main_ref.selected_fac):
+	var dact = h._act("СНОС\n+%d $" % TEL_REFUND, "icon_close", "iskander_demolish", true)
+	dact["red"] = true
+	acts.append(dact)
+
+	acts.append(h._act("ЗАКРЫТЬ", "icon_arrow_down", "iskander_close", true))
+	h._fill_acts("iskander_acts_%d" % f.id, acts)
+
+func _update_targeting_card() -> void:
+	if main_ref == null or main_ref.hud == null:
+		return
+	var h: Variant = main_ref.hud
+	h._card("iskander_targeting", "icon_target", "НАВЕДЕНИЕ ОТРК «ИСКАНДЕР-М»", "Укажите цель для ракеты 9М723 (ЛКМ/Тап — выбор, Enter/Кнопка — пуск)", false, false, true)
+	if target_point == Vector2.INF:
+		h._set_info("КЛИКНИТЕ ПО КАРТЕ, ЧТОБЫ ВЫБРАТЬ ЦЕЛЬ ДЛЯ КВАЗИБАЛЛИСТИЧЕСКОГО УДАРА", false)
+	else:
+		var cell: Vector2i = Vector2i(floori(target_point.x / float(GameWorld.CELL)), floori(target_point.y / float(GameWorld.CELL)))
+		h._set_info("ЦЕЛЬ: КВАДРАТ (%d, %d) · НАЖМИТЕ [ПУСК 9М723] ИЛИ ENTER ДЛЯ СТАРТА!" % [cell.x, cell.y], true)
+	h.ops_detail.visible = false
+
+	var acts: Array = []
+	var has_tgt = target_point != Vector2.INF
+	acts.append(h._act("ПУСК 9М723", "icon_target", "iskander_launch_confirm", has_tgt))
+	acts.append(h._act("ОТМЕНА", "icon_close", "iskander_cancel_target", true))
+	h._fill_acts("iskander_target_acts", acts)
+
+func _on_match_tick(main: Node, world: Node, delta: float) -> void:
+	if main != null:
+		main_ref = main
+	if world != null:
+		world_ref = world
+	var ts: float = 1.0
+	if world_ref != null and "time_scale" in world_ref:
+		ts = maxf(0.0, float(world_ref.time_scale))
+	var sim_delta: float = delta * ts
+
+	if is_targeting and targeting_tel != null and is_instance_valid(targeting_tel):
+		_update_targeting_card()
+	elif main_ref != null and "selected_fac" in main_ref and main_ref.selected_fac != null and is_instance_valid(main_ref.selected_fac):
 		var f: Facility = main_ref.selected_fac as Facility
 		if f != null and bool(f.get_meta("is_iskander_tel", false)):
 			selected_fac = f
+			_update_native_card(f)
 		else:
-			selected_fac = null
+			if selected_fac != null and selected_fac == f:
+				selected_fac = null
 	else:
 		selected_fac = null
-
-	_update_controls()
 
 	# Перезарядка комплексов
 	if world_ref != null and world_ref.mil != null:
 		for fac in world_ref.mil.facilities:
 			if fac != null and bool(fac.get_meta("is_iskander_tel", false)):
 				if bool(fac.get_meta("is_reloading", false)):
-					var rem_t = float(fac.get_meta("reload_timer", 0.0)) - delta
+					var rem_t = float(fac.get_meta("reload_timer", 0.0)) - sim_delta
 					if rem_t <= 0.0:
 						fac.set_meta("is_reloading", false)
 						fac.set_meta("has_missile", true)
@@ -440,7 +465,7 @@ func _on_match_tick(_main: Node, _world: Node, delta: float) -> void:
 	var i = active_missiles.size() - 1
 	while i >= 0:
 		var m: Dictionary = active_missiles[i]
-		m["t"] += delta
+		m["t"] += sim_delta
 		var dur: float = float(m["duration"])
 		var progress: float = clampf(float(m["t"]) / dur, 0.0, 1.0)
 		var cur_pos: Vector2 = (m["start"] as Vector2).lerp(m["target"] as Vector2, progress)
@@ -460,7 +485,7 @@ func _on_match_tick(_main: Node, _world: Node, delta: float) -> void:
 	var ei = active_explosions.size() - 1
 	while ei >= 0:
 		var exp: Dictionary = active_explosions[ei]
-		exp["t"] += delta
+		exp["t"] += sim_delta
 		if float(exp["t"]) >= float(exp["duration"]):
 			active_explosions.remove_at(ei)
 		ei -= 1
@@ -476,13 +501,13 @@ func _explode_missile(pos: Vector2) -> void:
 	var d = world_ref.data
 
 	# Кратер и выжженная земля
-	if d.in_bounds(cell.x, cell.y):
+	if d.inside(cell.x, cell.y):
 		d.set_biome(cell.x, cell.y, Biome.CRATER)
 	for dy in range(-2, 3):
 		for dx in range(-2, 3):
 			var cx = cell.x + dx
 			var cy = cell.y + dy
-			if d.in_bounds(cx, cy) and (cx != cell.x or cy != cell.y):
+			if d.inside(cx, cy) and (cx != cell.x or cy != cell.y):
 				if (dx * dx + dy * dy) <= 5 and d.get_biome(cx, cy) > Biome.RIVER:
 					d.set_biome(cx, cy, Biome.BURNT)
 

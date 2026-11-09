@@ -1,4 +1,3 @@
-class_name TankFactoryMod
 extends RefCounted
 
 ## Мод «Завод танков и бронетехники» для DroneFlames PC Port
@@ -154,7 +153,13 @@ func _on_hud_action(nm: String) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	_tick_factories(delta)
+
+	var ts: float = 1.0
+	if world != null and "time_scale" in world:
+		ts = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = delta * ts
+
+	_tick_factories(sim_delta)
 
 	# Обновление нативной карточки здания внизу экрана, если выбран наш завод
 	if main != null and "selected_fac" in main and main.selected_fac != null and is_instance_valid(main.selected_fac):

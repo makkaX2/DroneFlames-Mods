@@ -120,11 +120,18 @@ func _on_world_started(_main: Node, _world: Node) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	if selected_scenario == 0 or _scenario_triggered:
 		return
-	
-	_scenario_timer += delta
+
+	var time_scale: float = 1.0
+	if world != null and "time_scale" in world:
+		time_scale = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = delta * time_scale
+	if sim_delta <= 0.0:
+		return
+
+	_scenario_timer += sim_delta
 	if _scenario_timer < 3.0:
 		return
-	
+
 	_scenario_triggered = true
 	_apply_scenario(main, world, selected_scenario)
 

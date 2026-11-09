@@ -1,4 +1,3 @@
-class_name ShahedGeranMod
 extends RefCounted
 
 ## Мод «БПЛА-камикадзе «Герань-2» (Shahed-136)» для DroneFlames PC Port
@@ -162,6 +161,11 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
 
+	var time_scale: float = 1.0
+	if world != null and "time_scale" in world:
+		time_scale = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = delta * time_scale
+
 	# 1. Интеграция кнопки в карточку выбранного Дронозавода
 	_tick_factory_card(main, world, delta)
 
@@ -169,10 +173,9 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	_tick_plan_card(main, world)
 
 	# 3. Отслеживание новых дронов и конвертация в Герань при заказе
-	_tick_drone_production(world, delta)
-
-	# 4. Физика, звук мопеда и разрушительный взрыв активных Гераней
-	_tick_active_gerans(world, delta)
+	if sim_delta > 0.0:
+		_tick_drone_production(world, sim_delta)
+		_tick_active_gerans(world, sim_delta)
 
 # ==============================================================================
 # ИНТЕГРАЦИЯ В КАРТОЧКУ ДРОНОЗАВОДА

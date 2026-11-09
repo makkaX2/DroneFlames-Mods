@@ -1,4 +1,3 @@
-class_name ATGMClusterMod
 extends RefCounted
 
 ## Мод «Кассетный боеприпас для ПТРК» для DroneFlames PC Port
@@ -85,8 +84,15 @@ func _on_hud_action(nm: String) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	_tick_rockets(delta)
-	_tick_submunitions(delta)
+
+	var time_scale: float = 1.0
+	if world != null and "time_scale" in world:
+		time_scale = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = delta * time_scale
+
+	if sim_delta > 0.0:
+		_tick_rockets(sim_delta)
+		_tick_submunitions(sim_delta)
 
 	if world_layer != null and is_instance_valid(world_layer):
 		world_layer.queue_redraw()

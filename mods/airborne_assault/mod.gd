@@ -1,4 +1,3 @@
-class_name AirborneAssaultMod
 extends RefCounted
 
 ## Мод «Воздушный Десант (ВДВ) — Спецназ и Тактическая Авиация» для DroneFlames PC Port
@@ -274,11 +273,17 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
 
-	_tick_hqs(delta)
-	_tick_helis(delta)
-	_tick_planes(delta)
-	_tick_parachutes(delta)
-	_tick_vdv_ai(delta)
+	var time_scale: float = 1.0
+	if world != null and "time_scale" in world:
+		time_scale = maxf(0.0, float(world.time_scale))
+	var sim_delta: float = delta * time_scale
+
+	if sim_delta > 0.0:
+		_tick_hqs(sim_delta)
+		_tick_helis(sim_delta)
+		_tick_planes(sim_delta)
+		_tick_parachutes(sim_delta)
+		_tick_vdv_ai(sim_delta)
 
 	# Обновление нативной карточки здания внизу экрана, если выбран наш штаб ВДВ
 	if main != null and "selected_fac" in main and main.selected_fac != null and is_instance_valid(main.selected_fac):
@@ -351,7 +356,8 @@ func can_place_hq_at(cell: Vector2i) -> bool:
 			var cx = cell.x + dx
 			var cy = cell.y + dy
 
-			if d.get_owner(cx, cy) != player.id:
+			var own = d.get_owner_id(cx, cy) if d.has_method("get_owner_id") else d.get_owner(cx, cy)
+			if own != player.id:
 				return false
 
 			var b = d.get_biome(cx, cy)
@@ -388,6 +394,7 @@ func place_hq_at(cell: Vector2i) -> void:
 	f.country_id = p.id
 	f.cell = cell
 	f.size = HQ_SIZE
+	f.powered = true
 	f.set_meta("is_vdv_hq", true)
 	f.set_meta("hp", HQ_MAX_HP)
 	f.set_meta("max_hp", HQ_MAX_HP)
@@ -436,7 +443,7 @@ func _tick_hqs(delta: float) -> void:
 		if not (f is Facility and f.has_meta("is_vdv_hq") and f.get_meta("is_vdv_hq")):
 			continue
 
-		var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
+		var is_powered = true
 
 		var prep_op = String(f.get_meta("prep_op", ""))
 		if prep_op != "":
@@ -472,14 +479,6 @@ func _order_preparation(f: Facility, op_type: String) -> void:
 	var cost_m = 0
 	var cost_met = 0
 	var prep_dur = 0.0
-
-	var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
-	if not is_powered:
-		if main_ref != null and main_ref.hud != null:
-			main_ref.hud.show_toast("База обесточена! Для подготовки бортов требуется электроэнергия.")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_error")
-		return
 
 	if op_type == "mi8":
 		cost_m = MI8_COST_MONEY
@@ -534,13 +533,7 @@ func _start_targeting(f: Facility, op_type: String) -> void:
 			main_ref.hud.show_toast("ПРИКАЗ ВДВ: Кликните ЛКМ по любой точке или городу на карте для общего наступления!")
 		return
 
-	var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
-	if not is_powered:
-		if main_ref != null and main_ref.hud != null:
-			main_ref.hud.show_toast("База обесточена! Вылет невозможен без электроснабжения систем связи.")
-		if ClassDB.class_exists("UiKit"):
-			UiKit.snd("ui_error")
-		return
+	var is_powered = true
 
 	if op_type == "mi8":
 		if int(f.get_meta("mi8_ready", 0)) <= 0:
@@ -631,7 +624,7 @@ func _update_native_card(f: Facility) -> void:
 	var hp = float(f.get_meta("hp", HQ_MAX_HP))
 	var max_hp = float(f.get_meta("max_hp", HQ_MAX_HP))
 
-	var is_powered = f.powered or (world_ref.mil.has_method("has_power") and world_ref.mil.has_power(f))
+	var is_powered = true
 	var active_heli = f.get_meta("active_heli")
 
 	main_ref.hud._card(
@@ -973,8 +966,12 @@ func _execute_trooper_campaign_behavior(u: Unit, player_id: int) -> void:
 	# 1. Захват и удержание ячейки под ногами в пользу игрока
 	var cell = Vector2i((u.pos / float(GameWorld.CELL)).floor())
 	if world_ref.data != null and world_ref.data.inside(cell.x, cell.y):
-		if world_ref.data.get_owner(cell.x, cell.y) != player_id:
-			world_ref.data.set_owner(cell.x, cell.y, player_id)
+		var cur_owner = world_ref.data.get_owner_id(cell.x, cell.y) if world_ref.data.has_method("get_owner_id") else world_ref.data.get_owner(cell.x, cell.y)
+		if cur_owner != player_id:
+			if world_ref.data.has_method("set_owner_id"):
+				world_ref.data.set_owner_id(cell.x, cell.y, player_id)
+			elif world_ref.data.has_method("set_owner"):
+				world_ref.data.set_owner(cell.x, cell.y, player_id)
 
 	# 2. Поиск ближайших вражеских юнитов в боевом радиусе 280 px
 	var best_enemy_u: Unit = null
@@ -1330,11 +1327,11 @@ class VdvParachuteCargo extends RefCounted:
 # Слой игрового мира (Отрисовка призрака постройки, вертолёта, тросов, парашютов и выделения)
 # ==============================================================================
 class AirborneAssaultWorldLayer extends Node2D:
-	var mod_ref: AirborneAssaultMod = null
+	var mod_ref: RefCounted = null
 	var main_ref: Node = null
 	var world_ref: Node = null
 
-	func setup(m: AirborneAssaultMod, main: Node, world: Node) -> void:
+	func setup(m: RefCounted, main: Node, world: Node) -> void:
 		mod_ref = m
 		main_ref = main
 		world_ref = world
