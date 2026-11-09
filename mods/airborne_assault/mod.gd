@@ -99,33 +99,37 @@ func _cleanup_nodes() -> void:
 		world_layer.queue_free()
 		world_layer = null
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	_cleanup_nodes()
 
 	# 1. Встраивание слота постройки в нативную вкладку «АРМИЯ» (Tab 4)
-	if main.hud != null:
-		if main.hud.pages.size() > 4:
-			var army_grid = main.hud.pages[4] as GridContainer
-			if army_grid != null and not main.hud.keys.has("airborne_hq"):
-				var cell = main.hud._cell("airborne_hq", "icon_vdv_hq", true)
-				if main.hud.key_labels.has("airborne_hq"):
-					var lbl = main.hud.key_labels["airborne_hq"] as Label
-					if lbl != null:
-						lbl.text = "ШТАБ ВДВ"
-				army_grid.add_child(cell)
-				army_grid.move_child(cell, 2)
+	if main.hud != null and main.hud.pages.size() > 4:
+		var army_grid = main.hud.pages[4] as GridContainer
+		if army_grid != null and not main.hud.keys.has("airborne_hq"):
+			var cell = main.hud._cell("airborne_hq", "icon_vdv_hq", true)
+			if main.hud.key_labels.has("airborne_hq"):
+				var lbl = main.hud.key_labels["airborne_hq"] as Label
+				if lbl != null:
+					lbl.text = "ШТАБ ВДВ"
+			army_grid.add_child(cell)
+			army_grid.move_child(cell, 2)
 
 		# Подключение к сигналу действий HUD
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
 	# 2. Слой мира для отображения сетки постройки, вертолётов, тросов, парашютов и выделения
-	world_layer = AirborneAssaultWorldLayer.new()
-	world_layer.setup(self, main, world)
-	world.add_child(world_layer)
+	if world_layer == null or not is_instance_valid(world_layer):
+		world_layer = AirborneAssaultWorldLayer.new()
+		world_layer.setup(self, main, world)
+		world.add_child(world_layer)
 
+func _on_world_started(main: Node, world: Node) -> void:
+	_cleanup_nodes()
+	_ensure_hud(main, world)
 	print("[AirborneAssault] Injected airborne_hq into Army tab. World layer attached.")
 
 # ==============================================================================
@@ -272,6 +276,9 @@ func _on_hud_action(nm: String) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
+
+	if main != null and (main.hud == null or not main.hud.keys.has("airborne_hq") or world_layer == null):
+		_ensure_hud(main, world)
 
 	var time_scale: float = 1.0
 	if world != null and "time_scale" in world:
@@ -1051,7 +1058,7 @@ func _assign_unit_path(u: Unit, dest: Vector2) -> void:
 # Класс вертолёта Ми-8 (Тактический десант, спуск на тросах, управляемость в полёте)
 # ==============================================================================
 class VdvHelicopter extends RefCounted:
-	var mod_ref: AirborneAssaultMod = null
+	var mod_ref: RefCounted = null
 	var hq_ref: Facility = null
 
 	var pos: Vector2 = Vector2.ZERO
@@ -1071,7 +1078,7 @@ class VdvHelicopter extends RefCounted:
 	var is_finished: bool = false
 	var dust_timer: float = 0.0
 
-	func setup(m: AirborneAssaultMod, hq: Facility, b_pos: Vector2, t_pos: Vector2) -> void:
+	func setup(m: RefCounted, hq: Facility, b_pos: Vector2, t_pos: Vector2) -> void:
 		mod_ref = m
 		hq_ref = hq
 		base_pos = b_pos
@@ -1205,7 +1212,7 @@ class VdvHelicopter extends RefCounted:
 # Класс транспортного самолёта Ил-76 (Сброс БМД и роты десанта на парашютах)
 # ==============================================================================
 class VdvCargoPlane extends RefCounted:
-	var mod_ref: AirborneAssaultMod = null
+	var mod_ref: RefCounted = null
 	var hq_ref: Facility = null
 
 	var pos: Vector2 = Vector2.ZERO
@@ -1218,7 +1225,7 @@ class VdvCargoPlane extends RefCounted:
 	var is_finished: bool = false
 	var life_time: float = 0.0
 
-	func setup(m: AirborneAssaultMod, hq: Facility, target_pos: Vector2) -> void:
+	func setup(m: RefCounted, hq: Facility, target_pos: Vector2) -> void:
 		mod_ref = m
 		hq_ref = hq
 		lz_pos = target_pos
@@ -1262,7 +1269,7 @@ class VdvCargoPlane extends RefCounted:
 # Класс спускающегося парашютного груза / техники
 # ==============================================================================
 class VdvParachuteCargo extends RefCounted:
-	var mod_ref: AirborneAssaultMod = null
+	var mod_ref: RefCounted = null
 	var hq_ref: Facility = null
 
 	var pos: Vector2 = Vector2.ZERO
@@ -1272,7 +1279,7 @@ class VdvParachuteCargo extends RefCounted:
 	var is_finished: bool = false
 	var swing_phase: float = 0.0
 
-	func setup(m: AirborneAssaultMod, hq: Facility, drop_p: Vector2, u_type: int, vehicle: bool) -> void:
+	func setup(m: RefCounted, hq: Facility, drop_p: Vector2, u_type: int, vehicle: bool) -> void:
 		mod_ref = m
 		hq_ref = hq
 		pos = drop_p

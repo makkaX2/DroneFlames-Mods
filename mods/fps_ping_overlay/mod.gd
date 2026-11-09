@@ -55,7 +55,7 @@ func _get_hud(main: Node) -> Node:
 
 
 func _reposition_label() -> void:
-	if _label == null or not is_instance_valid(_label):
+	if _label == null or not is_instance_valid(_label) or not _label.is_inside_tree():
 		return
 	var vp_w: float = _label.get_viewport_rect().size.x
 	_label.anchor_left = 1.0
@@ -81,7 +81,6 @@ func _ensure_overlay(main: Node) -> void:
 		return
 	_label = Label.new()
 	_label.name = LABEL_NAME
-	_reposition_label()
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -91,6 +90,7 @@ func _ensure_overlay(main: Node) -> void:
 	_label.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.03, 1.0))
 	_label.add_theme_constant_override("outline_size", 3)
 	container.add_child(_label)
+	_reposition_label()
 	if not _label.get_viewport().size_changed.is_connected(_reposition_label):
 		_label.get_viewport().size_changed.connect(_reposition_label)
 

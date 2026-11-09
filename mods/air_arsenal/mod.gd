@@ -25,4 +25,5 @@ func cleanup_mod(mm: Node) -> void:
 
 func _on_world_started(main: Node, world: Node) -> void:
 	main_ref = main
-	world.mil.air.arsenal_enabled = true
+	if world != null and world.mil != null and world.mil.air != null:
+		world.mil.air.arsenal_enabled = true

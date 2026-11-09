@@ -66,42 +66,47 @@ func _cleanup_nodes() -> void:
 		flash_layer.queue_free()
 		flash_layer = null
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	_cleanup_nodes()
 
 	# 1. Встраивание слота постройки МБР во вкладку «АРМИЯ» (Tab 4) нижней панели
-	if main.hud != null:
-		if main.hud.pages.size() > 4:
-			var army_grid = main.hud.pages[4] as GridContainer
-			if army_grid != null and not main.hud.keys.has("nuclear_silo"):
-				var cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
-				if main.hud.key_labels.has("nuclear_silo"):
-					var lbl = main.hud.key_labels["nuclear_silo"] as Label
-					if lbl != null:
-						lbl.text = "ШАХТА\nМБР"
-				army_grid.add_child(cell)
-				army_grid.move_child(cell, 2)
+	if main.hud != null and main.hud.pages.size() > 4:
+		var army_grid = main.hud.pages[4] as GridContainer
+		if army_grid != null and not main.hud.keys.has("nuclear_silo"):
+			var cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
+			if main.hud.key_labels.has("nuclear_silo"):
+				var lbl = main.hud.key_labels["nuclear_silo"] as Label
+				if lbl != null:
+					lbl.text = "ШАХТА\nМБР"
+			army_grid.add_child(cell)
+			army_grid.move_child(cell, 2)
 
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
 	# 2. Слой мира для визуализации призрака, шахты, полёта МБР и ядерных грибов
-	world_layer = NuclearWorldLayer.new()
-	world_layer.setup(self, main, world)
-	world.add_child(world_layer)
+	if world_layer == null or not is_instance_valid(world_layer):
+		world_layer = NuclearWorldLayer.new()
+		world_layer.setup(self, main, world)
+		world.add_child(world_layer)
 
 	# 3. CanvasLayer для кинематографичной ослепляющей ядерной вспышки
-	flash_layer = CanvasLayer.new()
-	flash_layer.layer = 120
-	flash_rect = ColorRect.new()
-	flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	flash_rect.color = Color(1.0, 0.96, 0.75, 0.0)
-	flash_layer.add_child(flash_rect)
-	main.add_child(flash_layer)
+	if flash_layer == null or not is_instance_valid(flash_layer):
+		flash_layer = CanvasLayer.new()
+		flash_layer.layer = 120
+		flash_rect = ColorRect.new()
+		flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		flash_rect.color = Color(1.0, 0.96, 0.75, 0.0)
+		flash_layer.add_child(flash_rect)
+		main.add_child(flash_layer)
 
+func _on_world_started(main: Node, world: Node) -> void:
+	_cleanup_nodes()
+	_ensure_hud(main, world)
 	print("[NuclearStrike] Injected nuclear_silo cell into Army tab and world layers created.")
 
 func _on_hud_action(nm: String) -> void:
@@ -171,6 +176,8 @@ func _is_silo(f: Facility) -> bool:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
+	if main != null and (main.hud == null or not main.hud.keys.has("nuclear_silo") or world_layer == null):
+		_ensure_hud(main, world)
 
 	var ts: float = 1.0
 	if world != null and "time_scale" in world:

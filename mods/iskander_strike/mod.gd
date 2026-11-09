@@ -12,6 +12,7 @@ var main_ref: Node = null
 var world_ref: Node = null
 
 var world_layer: Node2D = null
+var input_overlay: Node2D = null
 
 var is_placing: bool = false
 var is_targeting: bool = false
@@ -128,11 +129,15 @@ func _cleanup_nodes() -> void:
 	if world_layer != null and is_instance_valid(world_layer):
 		world_layer.queue_free()
 		world_layer = null
+	if input_overlay != null and is_instance_valid(input_overlay):
+		input_overlay.queue_free()
+		input_overlay = null
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	_cleanup_nodes()
 
 	# Добавление кнопки ОТРК в нижнюю панель «АРМИЯ» (Tab 4)
 	if main.hud != null and main.hud.pages.size() > 4:
@@ -148,14 +153,20 @@ func _on_world_started(main: Node, world: Node) -> void:
 			main.hud.action.connect(_on_hud_action)
 
 	# Слой отрисовки ракет, трассеров и взрывов
-	world_layer = Node2D.new()
-	world_layer.z_index = 85
-	world_layer.draw.connect(_on_draw_world)
-	world.add_child(world_layer)
+	if world_layer == null or not is_instance_valid(world_layer):
+		world_layer = Node2D.new()
+		world_layer.z_index = 85
+		world_layer.draw.connect(_on_draw_world)
+		world.add_child(world_layer)
 
 	# Слой перехвата кликов при размещении и наведении
-	var input_overlay = IskanderInputOverlay.new(self, main, world)
-	world.add_child(input_overlay)
+	if input_overlay == null or not is_instance_valid(input_overlay):
+		input_overlay = IskanderInputOverlay.new(self, main, world)
+		world.add_child(input_overlay)
+
+func _on_world_started(main: Node, world: Node) -> void:
+	_cleanup_nodes()
+	_ensure_hud(main, world)
 
 func _on_hud_action(action_name: String) -> void:
 	match action_name:
@@ -427,6 +438,8 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 		main_ref = main
 	if world != null:
 		world_ref = world
+	if main != null and (main.hud == null or not main.hud.keys.has("iskander_tel") or world_layer == null or input_overlay == null):
+		_ensure_hud(main, world_ref if world_ref != null else world)
 	var ts: float = 1.0
 	if world_ref != null and "time_scale" in world_ref:
 		ts = maxf(0.0, float(world_ref.time_scale))

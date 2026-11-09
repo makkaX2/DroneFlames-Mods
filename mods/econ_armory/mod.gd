@@ -9,6 +9,7 @@ func init_mod(mm: Node) -> void:
 	mm_ref = mm
 	if mm.has_method("register_hook"):
 		mm.call("register_hook", "on_world_started", Callable(self, "_on_world_started"))
+		mm.call("register_hook", "on_match_tick", Callable(self, "_on_match_tick"))
 
 func cleanup_mod(mm: Node) -> void:
 	if main_ref != null and is_instance_valid(main_ref) and main_ref.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
@@ -20,8 +21,11 @@ func cleanup_mod(mm: Node) -> void:
 	main_ref = null
 	if mm != null and mm.has_method("unregister_hook"):
 		mm.call("unregister_hook", "on_world_started", Callable(self, "_on_world_started"))
+		mm.call("unregister_hook", "on_match_tick", Callable(self, "_on_match_tick"))
 
-func _on_world_started(main: Node, _world: Node) -> void:
+func _ensure_hud(main: Node) -> void:
+	if main == null or not is_instance_valid(main):
+		return
 	main_ref = main
 	if main.hud == null:
 		return
@@ -32,6 +36,13 @@ func _on_world_started(main: Node, _world: Node) -> void:
 		main.hud.pages[5].add_child(cell)
 	if not main.hud.action.is_connected(_on_hud_action):
 		main.hud.action.connect(_on_hud_action)
+
+func _on_world_started(main: Node, _world: Node) -> void:
+	_ensure_hud(main)
+
+func _on_match_tick(main: Node, _world: Node, _delta: float) -> void:
+	if main_ref == null or main == null or main.hud == null or not main.hud.keys.has("econ_armory_open"):
+		_ensure_hud(main)
 
 func _on_hud_action(action: String) -> void:
 	if action == "econ_armory_open":

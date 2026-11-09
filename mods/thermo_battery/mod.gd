@@ -84,33 +84,39 @@ func _cleanup_nodes() -> void:
 	world_layer = null
 	glow_layer = null
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	_cleanup_nodes()
-	fx_sys = ThermoFx.new()
-	fx_sys.setup(MAX_PARTICLES)
+	if fx_sys == null:
+		fx_sys = ThermoFx.new()
+		fx_sys.setup(MAX_PARTICLES)
 
-	if main.hud != null:
-		if main.hud.pages.size() > 4:
-			var army_grid: GridContainer = main.hud.pages[4] as GridContainer
-			if army_grid != null and not main.hud.keys.has(CELL_KEY):
-				var cell: Control = main.hud._cell(CELL_KEY, "icon_mlrs", true)
-				if main.hud.key_labels.has(CELL_KEY):
-					var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
-					if lbl != null:
-						lbl.text = "ТОС-1А\nСОЛНЦЕПЁК"
-				army_grid.add_child(cell)
-				army_grid.move_child(cell, mini(3, army_grid.get_child_count() - 1))
+	if main.hud != null and main.hud.pages.size() > 4:
+		var army_grid: GridContainer = main.hud.pages[4] as GridContainer
+		if army_grid != null and not main.hud.keys.has(CELL_KEY):
+			var cell: Control = main.hud._cell(CELL_KEY, "icon_mlrs", true)
+			if main.hud.key_labels.has(CELL_KEY):
+				var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
+				if lbl != null:
+					lbl.text = "СОЛНЦЕПЁК"
+			army_grid.add_child(cell)
+			army_grid.move_child(cell, mini(3, army_grid.get_child_count() - 1))
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
-	world_layer = ThermoWorldLayer.new()
-	world_layer.setup(self, main, world)
-	world.add_child(world_layer)
-	glow_layer = ThermoGlowLayer.new()
-	glow_layer.setup(self)
-	world_layer.add_child(glow_layer)
+	if world_layer == null or not is_instance_valid(world_layer):
+		world_layer = ThermoWorldLayer.new()
+		world_layer.setup(self, main, world)
+		world.add_child(world_layer)
+		glow_layer = ThermoGlowLayer.new()
+		glow_layer.setup(self)
+		world_layer.add_child(glow_layer)
+
+func _on_world_started(main: Node, world: Node) -> void:
+	_cleanup_nodes()
+	_ensure_hud(main, world)
 	print("[ThermoBattery] Cell injected into Army tab, world layers created.")
 
 func _on_hud_action(nm: String) -> void:
@@ -177,6 +183,8 @@ func _gdt(delta: float) -> float:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
+	if main != null and (main.hud == null or not main.hud.keys.has(CELL_KEY) or world_layer == null):
+		_ensure_hud(main, world)
 	var dt: float = _gdt(delta)
 	gtime += dt
 	lamp_t += dt
@@ -679,7 +687,7 @@ func _update_native_card(f: Facility) -> void:
 		return
 	var st: int = int(f.get_meta("state", ST_READY))
 	var left_s: float = maxf(0.0, float(f.get_meta("state_t", 0.0)))
-	h._card("thermo_batt_%d" % f.id, "icon_mlrs", "Термобарическая батарея «Солнцепёк»", "Тяжёлые огнемётные системы · Батарея #%d" % f.id, false, false, true)
+	h._card("thermo_batt_%d" % f.id, "icon_mlrs", "БАТАРЕЯ «СОЛНЦЕПЁК»", "Тяжёлая огнемётная система ТОС-1А · Батарея #%d" % f.id, false, false, true)
 	var info: String = ""
 	if st == ST_READY:
 		info = "СТАТУС: ГОТОВА К ЗАЛПУ · 24 РАКЕТЫ · ДАЛЬНОСТЬ %d-%d\nМЕТАЛЛ В СТРАНЕ: %d · ПРОЧНОСТЬ: %d/%d" % [int(RANGE_MIN), int(RANGE_MAX), int(p.metal), int(f.hp), int(BATT_MAX_HP)]

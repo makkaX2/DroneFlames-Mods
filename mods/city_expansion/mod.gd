@@ -31,28 +31,31 @@ func cleanup_mod(mm: Node) -> void:
 		mm.call("unregister_hook", "on_match_tick", Callable(self, "_on_match_tick"))
 	print("[CityExpansion] Mod cleaned up.")
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	selected_city = null
-	last_ops_key = ""
 
 	# 1. Встраивание слота развития во вкладку «ГОРОД / ЭКОНОМИКА» (Tab 2) нижней панели
-	if main.hud != null:
-		if main.hud.pages.size() > 2:
-			var city_grid = main.hud.pages[2] as GridContainer
-			if city_grid != null and not main.hud.keys.has("city_expand_tool"):
-				var cell = main.hud._cell("city_expand_tool", "icon_upgrade", true)
-				if main.hud.key_labels.has("city_expand_tool"):
-					var lbl = main.hud.key_labels["city_expand_tool"] as Label
-					if lbl != null:
-						lbl.text = "РАЗВИТИЕ\nГОРОДОВ"
-				city_grid.add_child(cell)
-				city_grid.move_child(cell, 2)
+	if main.hud != null and main.hud.pages.size() > 2:
+		var city_grid = main.hud.pages[2] as GridContainer
+		if city_grid != null and not main.hud.keys.has("city_expand_tool"):
+			var cell = main.hud._cell("city_expand_tool", "icon_upgrade", true)
+			if main.hud.key_labels.has("city_expand_tool"):
+				var lbl = main.hud.key_labels["city_expand_tool"] as Label
+				if lbl != null:
+					lbl.text = "РАЗВИТИЕ\nГОРОДОВ"
+			city_grid.add_child(cell)
+			city_grid.move_child(cell, 2)
 
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
+func _on_world_started(main: Node, world: Node) -> void:
+	selected_city = null
+	last_ops_key = ""
+	_ensure_hud(main, world)
 	print("[CityExpansion] Injected city_expand_tool cell into City tab.")
 
 func _on_hud_action(nm: String) -> void:
@@ -89,6 +92,8 @@ func _on_match_tick(main: Node, world: Node, _delta: float) -> void:
 
 	if main == null or main.hud == null or world == null:
 		return
+	if not main.hud.keys.has("city_expand_tool"):
+		_ensure_hud(main, world)
 
 	var time_scale: float = 1.0
 	if "time_scale" in world:

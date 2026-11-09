@@ -92,33 +92,36 @@ func _cleanup_nodes() -> void:
 		world_layer.queue_free()
 		world_layer = null
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	_cleanup_nodes()
 
 	# 1. Встраивание слота постройки напрямую во вкладку «АРМИЯ» (Tab 4) нижней панели
-	if main.hud != null:
-		if main.hud.pages.size() > 4:
-			var army_grid = main.hud.pages[4] as GridContainer
-			if army_grid != null and not main.hud.keys.has("tank_factory"):
-				var cell = main.hud._cell("tank_factory", "icon_tank", true)
-				if main.hud.key_labels.has("tank_factory"):
-					var lbl = main.hud.key_labels["tank_factory"] as Label
-					if lbl != null:
-						lbl.text = "БРОНЕЗАВОД"
-				army_grid.add_child(cell)
-				army_grid.move_child(cell, 1) # Рядом с казармами
+	if main.hud != null and main.hud.pages.size() > 4:
+		var army_grid = main.hud.pages[4] as GridContainer
+		if army_grid != null and not main.hud.keys.has("tank_factory"):
+			var cell = main.hud._cell("tank_factory", "icon_tank", true)
+			if main.hud.key_labels.has("tank_factory"):
+				var lbl = main.hud.key_labels["tank_factory"] as Label
+				if lbl != null:
+					lbl.text = "БРОНЕЗАВОД"
+			army_grid.add_child(cell)
+			army_grid.move_child(cell, 1) # Рядом с казармами
 
-		# 2. Подключение к нативным сигналам нажатия кнопок HUD
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
-	# 3. Слой мира для отображения сетки призрака постройки и частиц цеха
-	world_layer = TankFactoryWorldLayer.new()
-	world_layer.setup(self, main, world)
-	world.add_child(world_layer)
+	# 2. Слой мира для отображения сетки призрака постройки и частиц цеха
+	if world_layer == null or not is_instance_valid(world_layer):
+		world_layer = TankFactoryWorldLayer.new()
+		world_layer.setup(self, main, world)
+		world.add_child(world_layer)
 
+func _on_world_started(main: Node, world: Node) -> void:
+	_cleanup_nodes()
+	_ensure_hud(main, world)
 	print("[TankFactory] Injected tank_factory cell into Army tab and world layer attached.")
 
 func _on_hud_action(nm: String) -> void:
@@ -153,6 +156,8 @@ func _on_hud_action(nm: String) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
+	if main != null and (main.hud == null or not main.hud.keys.has("tank_factory") or world_layer == null):
+		_ensure_hud(main, world)
 
 	var ts: float = 1.0
 	if world != null and "time_scale" in world:

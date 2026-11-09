@@ -160,6 +160,8 @@ func _on_hud_action(nm: String) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
+	if main != null and main.hud != null and not main.hud.action.is_connected(_on_hud_action):
+		main.hud.action.connect(_on_hud_action)
 
 	var time_scale: float = 1.0
 	if world != null and "time_scale" in world:

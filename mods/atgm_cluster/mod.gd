@@ -41,34 +41,36 @@ func _cleanup_nodes() -> void:
 		world_layer.queue_free()
 		world_layer = null
 
-func _on_world_started(main: Node, world: Node) -> void:
+func _ensure_hud(main: Node, world: Node) -> void:
+	if main == null or not is_instance_valid(main) or world == null or not is_instance_valid(world):
+		return
 	main_ref = main
 	world_ref = world
-	_cleanup_nodes()
 
 	# 1. Встраивание нативной кнопки переключения во вкладку «АРМИЯ» (Tab 4) нижней панели
-	if main.hud != null:
-		if main.hud.pages.size() > 4:
-			var army_grid = main.hud.pages[4] as GridContainer
-			if army_grid != null and not main.hud.keys.has("atgm_cluster"):
-				var cell = main.hud._cell("atgm_cluster", "icon_target", true)
-				if main.hud.key_labels.has("atgm_cluster"):
-					var lbl = main.hud.key_labels["atgm_cluster"] as Label
-					if lbl != null:
-						lbl.text = "ПТРК-К"
-				army_grid.add_child(cell)
-				# Устанавливаем статус подсветки кнопки
-				main.hud.set_key_pressed("atgm_cluster", cluster_mode)
+	if main.hud != null and main.hud.pages.size() > 4:
+		var army_grid = main.hud.pages[4] as GridContainer
+		if army_grid != null and not main.hud.keys.has("atgm_cluster"):
+			var cell = main.hud._cell("atgm_cluster", "icon_target", true)
+			if main.hud.key_labels.has("atgm_cluster"):
+				var lbl = main.hud.key_labels["atgm_cluster"] as Label
+				if lbl != null:
+					lbl.text = "ПТРК-К"
+			army_grid.add_child(cell)
+			main.hud.set_key_pressed("atgm_cluster", cluster_mode)
 
-		# 2. Подключение к нативным сигналам нажатия кнопок HUD
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
-	# 3. Слой мира для эффектов суббоеприпасов (без плавающих окон UI)
-	world_layer = ATGMClusterWorldLayer.new()
-	world_layer.setup(self, main, world)
-	world.add_child(world_layer)
+	# 2. Слой мира для эффектов суббоеприпасов
+	if world_layer == null or not is_instance_valid(world_layer):
+		world_layer = ATGMClusterWorldLayer.new()
+		world_layer.setup(self, main, world)
+		world.add_child(world_layer)
 
+func _on_world_started(main: Node, world: Node) -> void:
+	_cleanup_nodes()
+	_ensure_hud(main, world)
 	print("[ATGMCluster] Injected atgm_cluster cell into Army tab and world layer attached.")
 
 func _on_hud_action(nm: String) -> void:
@@ -84,6 +86,9 @@ func _on_hud_action(nm: String) -> void:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
+
+	if main != null and (main.hud == null or not main.hud.keys.has("atgm_cluster") or world_layer == null):
+		_ensure_hud(main, world)
 
 	var time_scale: float = 1.0
 	if world != null and "time_scale" in world:
