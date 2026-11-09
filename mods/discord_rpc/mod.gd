@@ -372,7 +372,7 @@ func _get_player_name() -> String:
 		var n = cfg.get_value("prefs", "my_name", "")
 		if String(n).strip_edges() != "":
 			return String(n)
-	return "@CryptoAngelazaz"
+	return "@good_boy_irl & @CryptoAngelazaz"
 
 func _format_cash(val: int) -> String:
 	if abs(val) >= 1000000:
