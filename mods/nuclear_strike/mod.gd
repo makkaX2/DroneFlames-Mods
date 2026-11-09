@@ -94,22 +94,9 @@ func _ensure_hud(main: Node, world: Node) -> void:
 	# 1. Встраивание слота МБР во вкладку «АРМИЯ» (Tab 4) нижней панели
 	if main.hud != null and main.hud.pages.size() > 4:
 		var army_grid = main.hud.pages[4] as GridContainer
-		if army_grid != null:
-			var cell = main.hud.keys.get("nuclear_silo") as Control
-			if cell != null and is_instance_valid(cell):
-				if cell.get_parent() != army_grid:
-					cell.get_parent().remove_child(cell)
-					army_grid.add_child(cell)
-			elif not main.hud.keys.has("nuclear_silo"):
-				cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
-				army_grid.add_child(cell)
-			if main.hud.key_labels.has("nuclear_silo"):
-				var lbl = main.hud.key_labels["nuclear_silo"] as Label
-				if lbl != null:
-					lbl.text = "ШАХТА МБР"
-					lbl.clip_text = true
-					lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-					BuildPanel.fit(lbl, BuildPanel.CELL_W, BuildPanel.KEY_FONT)
+		if army_grid != null and not main.hud.keys.has("nuclear_silo"):
+			var cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
+			army_grid.add_child(cell)
 
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
@@ -245,13 +232,8 @@ func _is_silo(f: Facility) -> bool:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	if main != null:
-		if main.hud == null or not main.hud.keys.has("nuclear_silo") or world_layer == null:
-			_ensure_hud(main, world)
-		elif main.hud.pages.size() > 4 and main.hud.keys.has("nuclear_silo"):
-			var cell = main.hud.keys["nuclear_silo"]
-			if cell != null and is_instance_valid(cell) and cell.get_parent() != main.hud.pages[4]:
-				_ensure_hud(main, world)
+	if main != null and (main.hud == null or not main.hud.keys.has("nuclear_silo") or world_layer == null or flash_layer == null):
+		_ensure_hud(main, world)
 
 	var ts: float = 1.0
 	if world != null and "time_scale" in world:

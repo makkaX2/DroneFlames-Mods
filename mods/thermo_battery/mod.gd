@@ -114,22 +114,9 @@ func _ensure_hud(main: Node, world: Node) -> void:
 	if main.hud != null:
 		if main.hud.pages.size() > 4:
 			var army_grid: GridContainer = main.hud.pages[4] as GridContainer
-			if army_grid != null:
-				var cell: Control = main.hud.keys.get(CELL_KEY) as Control
-				if cell != null and is_instance_valid(cell):
-					if cell.get_parent() != army_grid:
-						cell.get_parent().remove_child(cell)
-						army_grid.add_child(cell)
-				elif not main.hud.keys.has(CELL_KEY):
-					cell = main.hud._cell(CELL_KEY, "icon_mlrs", true)
-					army_grid.add_child(cell)
-				if main.hud.key_labels.has(CELL_KEY):
-					var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
-					if lbl != null:
-						lbl.text = "СОЛНЦЕПЁК"
-						lbl.clip_text = true
-						lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-						BuildPanel.fit(lbl, BuildPanel.CELL_W, BuildPanel.KEY_FONT)
+			if army_grid != null and not main.hud.keys.has(CELL_KEY):
+				var cell = main.hud._cell(CELL_KEY, "icon_mlrs", true)
+				army_grid.add_child(cell)
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
@@ -258,13 +245,8 @@ func _gdt(delta: float) -> float:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	if main != null:
-		if main.hud == null or not main.hud.keys.has(CELL_KEY) or world_layer == null:
-			_ensure_hud(main, world)
-		elif main.hud.pages.size() > 4 and main.hud.keys.has(CELL_KEY):
-			var cell = main.hud.keys[CELL_KEY]
-			if cell != null and is_instance_valid(cell) and cell.get_parent() != main.hud.pages[4]:
-				_ensure_hud(main, world)
+	if main != null and (main.hud == null or not main.hud.keys.has(CELL_KEY) or world_layer == null or fx_sys == null):
+		_ensure_hud(main, world)
 	var dt: float = _gdt(delta)
 	gtime += dt
 	lamp_t += dt
