@@ -94,16 +94,21 @@ func _ensure_hud(main: Node, world: Node) -> void:
 		fx_sys.setup(MAX_PARTICLES)
 
 	if main.hud != null:
-		if main.hud.pages.size() > 4:
-			var army_grid: GridContainer = main.hud.pages[4] as GridContainer
-			if army_grid != null and not main.hud.keys.has(CELL_KEY):
-				var cell: Control = main.hud._cell(CELL_KEY, "icon_mlrs", true)
+		if main.hud.pages.size() > 2:
+			var strike_grid: GridContainer = main.hud.pages[2] as GridContainer
+			if strike_grid != null:
+				var cell: Control = main.hud.keys.get(CELL_KEY) as Control
+				if cell != null and is_instance_valid(cell):
+					if cell.get_parent() != strike_grid:
+						cell.get_parent().remove_child(cell)
+						strike_grid.add_child(cell)
+				elif not main.hud.keys.has(CELL_KEY):
+					cell = main.hud._cell(CELL_KEY, "icon_mlrs", true)
+					strike_grid.add_child(cell)
 				if main.hud.key_labels.has(CELL_KEY):
 					var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
 					if lbl != null:
 						lbl.text = "СОЛНЦЕПЁК"
-				army_grid.add_child(cell)
-				army_grid.move_child(cell, mini(3, army_grid.get_child_count() - 1))
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
@@ -118,7 +123,45 @@ func _ensure_hud(main: Node, world: Node) -> void:
 func _on_world_started(main: Node, world: Node) -> void:
 	_cleanup_nodes()
 	_ensure_hud(main, world)
-	print("[ThermoBattery] Cell injected into Army tab, world layers created.")
+	print("[ThermoBattery] Cell injected into Strikes tab, world layers created.")
+
+func _on_thermo_hud_button() -> void:
+	if is_placing:
+		cancel_placement()
+		return
+	if is_targeting:
+		_cancel_targeting()
+		return
+
+	_rescan_batts()
+	var ready_batt: Facility = null
+	var any_batt: Facility = null
+	var player_id: int = int(world_ref.player.id) if world_ref != null and world_ref.player != null else 0
+	for f in batts:
+		if f != null and is_instance_valid(f) and f.country_id == player_id and _batt_alive(f):
+			if any_batt == null:
+				any_batt = f
+			if int(f.get_meta("state", ST_READY)) == ST_READY:
+				ready_batt = f
+				break
+
+	if ready_batt != null:
+		selected_fac = ready_batt
+		if main_ref != null and "selected_fac" in main_ref:
+			main_ref.selected_fac = ready_batt
+		_start_targeting(ready_batt)
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("СОЛНЦЕПЁК: выберите цель на карте для залпа ТОС-1А!")
+	elif any_batt != null:
+		selected_fac = any_batt
+		if main_ref != null and "selected_fac" in main_ref:
+			main_ref.selected_fac = any_batt
+		_update_native_card(any_batt)
+		if main_ref != null and main_ref.hud != null:
+			var left_s = maxf(0.0, float(any_batt.get_meta("state_t", 0.0)))
+			main_ref.hud.show_toast("Батарея «Солнцепёк» перезаряжается (%s). Ожидайте!" % main_ref.hud._mmss(left_s))
+	else:
+		start_placement()
 
 func _on_hud_action(nm: String) -> void:
 	match nm:
@@ -126,9 +169,11 @@ func _on_hud_action(nm: String) -> void:
 			if main_ref != null and main_ref.hud != null:
 				main_ref.hud.show_tip(
 					"Термобарическая батарея «Солнцепёк»",
-					"Бетонная площадка с двумя тяжёлыми огнемётными системами ТОС-1А. Залп из 24 термобарических ракет выжигает всё живое и сносит постройки в зоне поражения. Стоимость: %d $ и %d металла, залп: %d $ и %d металла." % [BATT_COST_MONEY, BATT_COST_METAL, SALVO_COST_MONEY, SALVO_COST_METAL],
+					"Бетонная площадка с двумя тяжёлыми огнемётными системами ТОС-1А. Клик по кнопке при готовой батарее сразу открывает наведение залпа на карте. Если батарея перезаряжается — открывает карточку. Если батареи нет — постройка (%d $ и %d металла)." % [BATT_COST_MONEY, BATT_COST_METAL],
 					"")
-			toggle_placement()
+			_on_thermo_hud_button()
+		"thermo_build_another":
+			start_placement()
 		"thermo_fire":
 			var f_fire: Facility = selected_fac
 			if f_fire == null and main_ref != null and "selected_fac" in main_ref:
@@ -195,8 +240,13 @@ func _gdt(delta: float) -> float:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	if main != null and (main.hud == null or not main.hud.keys.has(CELL_KEY) or world_layer == null):
-		_ensure_hud(main, world)
+	if main != null:
+		if main.hud == null or not main.hud.keys.has(CELL_KEY) or world_layer == null:
+			_ensure_hud(main, world)
+		elif main.hud.pages.size() > 2 and main.hud.keys.has(CELL_KEY):
+			var cell = main.hud.keys[CELL_KEY]
+			if cell != null and is_instance_valid(cell) and cell.get_parent() != main.hud.pages[2]:
+				_ensure_hud(main, world)
 	var dt: float = _gdt(delta)
 	gtime += dt
 	lamp_t += dt
@@ -738,6 +788,8 @@ func _update_native_card(f: Facility) -> void:
 		acts.append(h._act("НАВЕДЕНИЕ...", "icon_target", "none", false))
 	else:
 		acts.append(h._act("ЗАЛП!", "icon_target", "none", false))
+
+	acts.append(h._act("ЕЩЁ БАТАРЕЯ\n%d$" % BATT_COST_MONEY, "icon_mlrs", "thermo_build_another", p.money >= BATT_COST_MONEY and p.metal >= BATT_COST_METAL))
 
 	if f.hp < BATT_MAX_HP:
 		acts.append(h._act("РЕМОНТ\n%d $" % BATT_REPAIR_COST, "icon_restore", "thermo_repair", p.money >= BATT_REPAIR_COST))

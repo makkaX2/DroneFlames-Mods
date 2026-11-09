@@ -52,6 +52,10 @@ class IskanderInputOverlay extends Node2D:
 		var is_cancel: bool = false
 		var ev_pos: Vector2 = Vector2.ZERO
 
+		if (mod.is_placing or mod.is_targeting) and (event is InputEventMouseButton or event is InputEventScreenTouch) and not event.pressed:
+			get_viewport().set_input_as_handled()
+			return
+
 		if event is InputEventMouseButton:
 			if event.pressed:
 				if event.button_index == MOUSE_BUTTON_LEFT:
@@ -289,6 +293,7 @@ func place_tel_at(cell: Vector2i) -> void:
 	f.cell = cell
 	f.size = TEL_SIZE
 	f.set_meta("is_iskander_tel", true)
+	f.set_meta("mod_facility", true)
 	f.set_meta("hp", TEL_MAX_HP)
 	f.set_meta("has_missile", true)
 	f.set_meta("is_reloading", false)
@@ -398,7 +403,7 @@ func _update_native_card(f: Facility) -> void:
 
 	var acts: Array = []
 	if has_missile:
-		acts.append(h._act("УДАР 9М723", "icon_target", "iskander_target", true))
+		acts.append(h._act("УДАР 9М723! >w<", "icon_target", "iskander_target", true))
 	elif is_reloading:
 		acts.append(h._act("ЗАРЯЖАНИЕ\n%s" % h._mmss(rem_t), "icon_restore", "none", false))
 	else:
@@ -412,7 +417,7 @@ func _update_native_card(f: Facility) -> void:
 	dact["red"] = true
 	acts.append(dact)
 
-	acts.append(h._act("ЗАКРЫТЬ", "icon_arrow_down", "iskander_close", true))
+	acts.append(h._act("ЗАКРЫТЬ ^^", "icon_close", "iskander_close", true))
 	h._fill_acts("iskander_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
@@ -429,8 +434,8 @@ func _update_targeting_card() -> void:
 
 	var acts: Array = []
 	var has_tgt = target_point != Vector2.INF
-	acts.append(h._act("ПУСК 9М723", "icon_target", "iskander_launch_confirm", has_tgt))
-	acts.append(h._act("ОТМЕНА", "icon_close", "iskander_cancel_target", true))
+	acts.append(h._act("ПУСК 9М723! >w<", "icon_target", "iskander_launch_confirm", has_tgt))
+	acts.append(h._act("ОТМЕНА ^^", "icon_close", "iskander_cancel_target", true))
 	h._fill_acts("iskander_target_acts", acts)
 
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
@@ -450,6 +455,7 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	elif main_ref != null and "selected_fac" in main_ref and main_ref.selected_fac != null and is_instance_valid(main_ref.selected_fac):
 		var f: Facility = main_ref.selected_fac as Facility
 		if f != null and bool(f.get_meta("is_iskander_tel", false)):
+			f.set_meta("mod_facility", true)
 			selected_fac = f
 			_update_native_card(f)
 		else:

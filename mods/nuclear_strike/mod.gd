@@ -72,17 +72,22 @@ func _ensure_hud(main: Node, world: Node) -> void:
 	main_ref = main
 	world_ref = world
 
-	# 1. Встраивание слота постройки МБР во вкладку «АРМИЯ» (Tab 4) нижней панели
-	if main.hud != null and main.hud.pages.size() > 4:
-		var army_grid = main.hud.pages[4] as GridContainer
-		if army_grid != null and not main.hud.keys.has("nuclear_silo"):
-			var cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
+	# 1. Встраивание слота МБР во вкладку «УДАРЫ» (Tab 2) нижней панели
+	if main.hud != null and main.hud.pages.size() > 2:
+		var strike_grid = main.hud.pages[2] as GridContainer
+		if strike_grid != null:
+			var cell = main.hud.keys.get("nuclear_silo") as Control
+			if cell != null and is_instance_valid(cell):
+				if cell.get_parent() != strike_grid:
+					cell.get_parent().remove_child(cell)
+					strike_grid.add_child(cell)
+			elif not main.hud.keys.has("nuclear_silo"):
+				cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
+				strike_grid.add_child(cell)
 			if main.hud.key_labels.has("nuclear_silo"):
 				var lbl = main.hud.key_labels["nuclear_silo"] as Label
 				if lbl != null:
-					lbl.text = "ШАХТА\nМБР"
-			army_grid.add_child(cell)
-			army_grid.move_child(cell, 2)
+					lbl.text = "ЯДЕРНЫЙ\nУДАР"
 
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
@@ -107,24 +112,65 @@ func _ensure_hud(main: Node, world: Node) -> void:
 func _on_world_started(main: Node, world: Node) -> void:
 	_cleanup_nodes()
 	_ensure_hud(main, world)
-	print("[NuclearStrike] Injected nuclear_silo cell into Army tab and world layers created.")
+	print("[NuclearStrike] Injected nuclear_silo into Strikes tab and world layers created.")
+
+func _on_nuke_hud_button() -> void:
+	if is_placing:
+		cancel_placement()
+		return
+	if is_targeting:
+		_cancel_targeting()
+		return
+
+	var ready_silo: Facility = null
+	var any_silo: Facility = null
+	var player_id: int = int(world_ref.player.id) if world_ref != null and world_ref.player != null else 0
+	if world_ref != null and world_ref.mil != null:
+		for f in world_ref.mil.facilities:
+			if f != null and is_instance_valid(f) and _is_silo(f) and f.country_id == player_id and f.hp > 0.0:
+				if any_silo == null:
+					any_silo = f
+				if bool(f.get_meta("has_warhead", false)):
+					ready_silo = f
+					break
+
+	if ready_silo != null:
+		selected_fac = ready_silo
+		if main_ref != null and "selected_fac" in main_ref:
+			main_ref.selected_fac = ready_silo
+		_start_targeting(ready_silo)
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("ЯДЕРНЫЙ УДАР: выберите квадрат на карте для пуска МБР «Сармат»!")
+	elif any_silo != null:
+		selected_fac = any_silo
+		if main_ref != null and "selected_fac" in main_ref:
+			main_ref.selected_fac = any_silo
+		_update_native_card(any_silo)
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Шахта МБР пуста. Закажите сборку термоядерной боеголовки!")
+	else:
+		start_placement()
 
 func _on_hud_action(nm: String) -> void:
 	match nm:
 		"nuclear_silo":
 			if main_ref != null and main_ref.hud != null:
 				main_ref.hud.show_tip(
-					"Шахтный комплекс МБР",
-					"Стратегический ракетный комплекс шахтного базирования. Требует 3500 $ и 10 урана (с урановых шахт). Снаряжается термоядерными МБР.",
+					"Термоядерный удар МБР «Сармат»",
+					"Стратегический комплекс шахтного базирования. Клик по кнопке при готовой ракете активирует наведение удара. Если ракеты нет — открывает карточку шахты. Если шахты нет — постройка (3500 $ и 10 урана).",
 					""
 				)
-			toggle_placement()
+			_on_nuke_hud_button()
 		"nuke_craft":
-			if selected_fac != null:
-				_order_warhead(selected_fac)
+			var f_c = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
+			if f_c != null and _is_silo(f_c):
+				_order_warhead(f_c)
 		"nuke_target":
-			if selected_fac != null:
-				_start_targeting(selected_fac)
+			var f_t = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
+			if f_t != null and _is_silo(f_t):
+				_start_targeting(f_t)
+		"nuke_build_another":
+			start_placement()
 		"nuke_target_reset":
 			target_point = Vector2.INF
 			if main_ref != null and main_ref.hud != null:
@@ -141,11 +187,13 @@ func _on_hud_action(nm: String) -> void:
 		"nuke_cancel_target":
 			_cancel_targeting()
 		"nuke_repair":
-			if selected_fac != null:
-				_repair_silo(selected_fac)
+			var f_r = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
+			if f_r != null and _is_silo(f_r):
+				_repair_silo(f_r)
 		"nuke_demolish":
-			if selected_fac != null:
-				_demolish_silo(selected_fac)
+			var f_d = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
+			if f_d != null and _is_silo(f_d):
+				_demolish_silo(f_d)
 		"nuke_close":
 			selected_fac = null
 			if main_ref != null and "selected_fac" in main_ref:
@@ -157,14 +205,13 @@ func _is_silo(f: Facility) -> bool:
 	if f == null:
 		return false
 	if f.army_build == "nuclear_silo" or f.lower_sprite == "nuclear_silo" or bool(f.get_meta("is_nuclear_silo", false)):
-		# ГАРАНТИЯ: Шахта — это стационарный железобетонный комплекс (CIV_FACTORY), ни в коем случае НЕ TEL!
-		# Блокируем любые попытки движка двигать шахту.
 		f.kind = Facility.Kind.CIV_FACTORY
+		f.set_meta("is_nuclear_silo", true)
+		f.set_meta("mod_facility", true)
 		f.moving = false
 		f.mdest = Vector2.ZERO
 		f.mpos = f.center_px()
-		if not f.has_meta("is_nuclear_silo"):
-			f.set_meta("is_nuclear_silo", true)
+		if not f.has_meta("hp"):
 			f.set_meta("hp", f.hp if f.hp > 0.0 else SILO_MAX_HP)
 			f.set_meta("max_hp", SILO_MAX_HP)
 			f.set_meta("has_warhead", f.missiles > 0)
@@ -176,8 +223,13 @@ func _is_silo(f: Facility) -> bool:
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	main_ref = main
 	world_ref = world
-	if main != null and (main.hud == null or not main.hud.keys.has("nuclear_silo") or world_layer == null):
-		_ensure_hud(main, world)
+	if main != null:
+		if main.hud == null or not main.hud.keys.has("nuclear_silo") or world_layer == null:
+			_ensure_hud(main, world)
+		elif main.hud.pages.size() > 2 and main.hud.keys.has("nuclear_silo"):
+			var cell = main.hud.keys["nuclear_silo"]
+			if cell != null and is_instance_valid(cell) and cell.get_parent() != main.hud.pages[2]:
+				_ensure_hud(main, world)
 
 	var ts: float = 1.0
 	if world != null and "time_scale" in world:
@@ -322,6 +374,7 @@ func place_silo_at(cell: Vector2i) -> void:
 	f.mpos = f.center_px()
 	f.missiles = 1
 	f.set_meta("is_nuclear_silo", true)
+	f.set_meta("mod_facility", true)
 	f.set_meta("hp", SILO_MAX_HP)
 	f.set_meta("max_hp", SILO_MAX_HP)
 	f.set_meta("has_warhead", true)
@@ -740,7 +793,7 @@ func _update_native_card(f: Facility) -> void:
 
 	var acts: Array = []
 	if has_w:
-		acts.append(h._act("ЯДЕРНЫЙ\nУДАР", "icon_target", "nuke_target", true))
+		acts.append(h._act("ПУСК МБР! >w<", "icon_target", "nuke_target", true))
 	elif prod:
 		var left_s = maxf(0.0, WARHEAD_TIME - float(f.get_meta("prod_t", 0.0)))
 		acts.append(h._act("ИДЁТ\nСБОРКА", "icon_r_uranium", "none", false, 0, "%s" % h._mmss(left_s)))
@@ -748,11 +801,16 @@ func _update_native_card(f: Facility) -> void:
 		var can_craft = p.money >= WARHEAD_COST_MONEY and p.uranium >= WARHEAD_COST_URANIUM
 		acts.append(h._act("СБОРКА ЯБЧ\n1500$ · 8 У", "icon_r_uranium", "nuke_craft", can_craft))
 
+	acts.append(h._act("ЕЩЁ ШАХТА\n3500$", "icon_m_ballistic", "nuke_build_another", p.money >= SILO_COST_MONEY and p.uranium >= SILO_COST_URANIUM))
+
 	if hp < max_hp:
 		acts.append(h._act("РЕМОНТ\n400$", "icon_restore", "nuke_repair", p.money >= SILO_REPAIR_COST))
 
-	acts.append(h._act("СНОС\n+1750$", "icon_close", "nuke_demolish", true))
-	acts.append(h._act("ЗАКРЫТЬ", "icon_arrow_down", "nuke_close", true))
+	var dact = h._act("СНОС\n+1750$", "icon_close", "nuke_demolish", true)
+	dact["red"] = true
+	acts.append(dact)
+
+	acts.append(h._act("ЗАКРЫТЬ ^^", "icon_close", "nuke_close", true))
 	h._fill_acts("nuclear_silo_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
@@ -776,10 +834,10 @@ func _update_targeting_card() -> void:
 
 	var acts: Array = []
 	var has_tgt = target_point != Vector2.INF
-	acts.append(h._act("ПУСК МБР", "icon_target", "nuke_launch_confirm", has_tgt))
+	acts.append(h._act("ПУСК МБР! >w<", "icon_target", "nuke_launch_confirm", has_tgt))
 	if has_tgt:
 		acts.append(h._act("СБРОС\nЦЕЛИ", "icon_refresh", "nuke_target_reset", true))
-	acts.append(h._act("ОТМЕНА", "icon_close", "nuke_cancel_target", true))
+	acts.append(h._act("ОТМЕНА ^^", "icon_close", "nuke_cancel_target", true))
 	h._fill_acts("nuclear_targeting_acts", acts)
 
 # -------------------------------------------------------------
@@ -803,6 +861,10 @@ class NuclearWorldLayer extends Node2D:
 		var is_press: bool = false
 		var is_cancel: bool = false
 		var ev_pos: Vector2 = Vector2.ZERO
+
+		if (mod.is_placing or mod.is_targeting) and (event is InputEventMouseButton or event is InputEventScreenTouch) and not event.pressed:
+			get_viewport().set_input_as_handled()
+			return
 
 		if event is InputEventMouseButton:
 			if event.pressed:
