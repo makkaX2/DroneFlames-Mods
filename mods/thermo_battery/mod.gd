@@ -117,6 +117,7 @@ func _ensure_hud(main: Node, world: Node) -> void:
 			if army_grid != null and not main.hud.keys.has(CELL_KEY):
 				var cell = main.hud._cell(CELL_KEY, "icon_mlrs", true)
 				army_grid.add_child(cell)
+				army_grid.move_child(cell, mini(army_grid.get_child_count() - 1, 1))
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
