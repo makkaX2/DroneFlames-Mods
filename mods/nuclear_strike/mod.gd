@@ -35,6 +35,25 @@ const SILO_REPAIR_COST: int = 400
 var active_missiles: Array = []
 var active_explosions: Array = []
 
+const BuildPanel = preload("res://ui/ui24/build_panel.gd")
+
+func close_all() -> void:
+	is_placing = false
+	is_targeting = false
+	targeting_silo = null
+	target_point = Vector2.INF
+	selected_fac = null
+	if main_ref != null:
+		if "selected_fac" in main_ref:
+			main_ref.selected_fac = null
+		if main_ref.has_method("_deselect"):
+			main_ref._deselect()
+		if main_ref.hud != null:
+			main_ref.hud.hide_ops()
+			main_ref.hud.set_key_pressed("nuclear_silo", false)
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_close")
+
 func init_mod(mm: Node) -> void:
 	mm_ref = mm
 	if mm.has_method("register_hook"):
@@ -87,7 +106,10 @@ func _ensure_hud(main: Node, world: Node) -> void:
 			if main.hud.key_labels.has("nuclear_silo"):
 				var lbl = main.hud.key_labels["nuclear_silo"] as Label
 				if lbl != null:
-					lbl.text = "ЯДЕРНЫЙ\nУДАР"
+					lbl.text = "ШАХТА МБР"
+					lbl.clip_text = true
+					lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+					BuildPanel.fit(lbl, BuildPanel.CELL_W, BuildPanel.KEY_FONT)
 
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
@@ -190,8 +212,8 @@ func _on_hud_action(nm: String) -> void:
 				main_ref.hud.show_toast("Сначала укажите точку удара на карте!")
 				if ClassDB.class_exists("UiKit"):
 					UiKit.snd("ui_error")
-		"nuke_cancel_target":
-			_cancel_targeting()
+		"cancel_select", "nuke_close", "nuke_cancel_target":
+			close_all()
 		"nuke_repair":
 			var f_r = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
 			if f_r != null and _is_silo(f_r):
@@ -200,12 +222,6 @@ func _on_hud_action(nm: String) -> void:
 			var f_d = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
 			if f_d != null and _is_silo(f_d):
 				_demolish_silo(f_d)
-		"nuke_close":
-			selected_fac = null
-			if main_ref != null and "selected_fac" in main_ref:
-				main_ref.selected_fac = null
-			if main_ref != null and main_ref.hud != null:
-				main_ref.hud.hide_ops()
 
 func _is_silo(f: Facility) -> bool:
 	if f == null:
@@ -458,17 +474,9 @@ func _start_targeting(f: Facility) -> void:
 		main_ref.hud.show_toast("БОЕВАЯ ТРЕВОГА! Выберите точку нанесения термоядерного удара на карте.")
 
 func _cancel_targeting() -> void:
-	is_targeting = false
-	targeting_silo = null
-	target_point = Vector2.INF
+	close_all()
 	if main_ref != null and main_ref.hud != null:
 		main_ref.hud.show_toast("Наведение ядерного удара отменено.")
-		if selected_fac != null:
-			_update_native_card(selected_fac)
-		else:
-			main_ref.hud.hide_ops()
-	if ClassDB.class_exists("UiKit"):
-		UiKit.snd("ui_select")
 
 func set_target_point(wpos: Vector2) -> void:
 	target_point = wpos
@@ -525,7 +533,7 @@ func launch_strike(target_world_pos: Vector2) -> void:
 
 	if main_ref != null and main_ref.hud != null:
 		main_ref.hud.show_toast("Пуск МБР «Сармат» выполнен! Подлёт к цели через %d сек." % int(ceil(flight_duration)))
-		main_ref.hud.hide_ops()
+	close_all()
 
 func _repair_silo(f: Facility) -> void:
 	var p = world_ref.player
@@ -565,14 +573,9 @@ func _demolish_silo(f: Facility) -> void:
 		world_ref.remove_object(f.main_obj)
 	world_ref.mil.facilities.erase(f)
 
-	selected_fac = null
-	if main_ref != null and "selected_fac" in main_ref:
-		main_ref.selected_fac = null
 	if main_ref != null and main_ref.hud != null:
 		main_ref.hud.show_toast("Шахтный комплекс МБР демонтирован (+%d $ возврат)." % SILO_REFUND)
-		main_ref.hud.hide_ops()
-	if ClassDB.class_exists("UiKit"):
-		UiKit.snd("ui_select")
+	close_all()
 
 func _tick_silos(delta: float) -> void:
 	if world_ref == null or world_ref.mil == null:
@@ -799,24 +802,24 @@ func _update_native_card(f: Facility) -> void:
 
 	var acts: Array = []
 	if has_w:
-		acts.append(h._act("ПУСК МБР! >w<", "icon_target", "nuke_target", true))
+		acts.append(h._act("ПУСК МБР", "icon_target", "nuke_target", true))
 	elif prod:
 		var left_s = maxf(0.0, WARHEAD_TIME - float(f.get_meta("prod_t", 0.0)))
-		acts.append(h._act("ИДЁТ\nСБОРКА", "icon_r_uranium", "none", false, 0, "%s" % h._mmss(left_s)))
+		acts.append(h._act("ИДЁТ СБОРКА\n%s" % h._mmss(left_s), "icon_r_uranium", "none", false))
 	else:
 		var can_craft = p.money >= WARHEAD_COST_MONEY and p.uranium >= WARHEAD_COST_URANIUM
-		acts.append(h._act("СБОРКА ЯБЧ\n1500$ · 8 У", "icon_r_uranium", "nuke_craft", can_craft))
+		acts.append(h._act("СБОРКА ЯБЧ\n1500 $ · 8 У", "icon_r_uranium", "nuke_craft", can_craft))
 
-	acts.append(h._act("ЕЩЁ ШАХТА\n3500$", "icon_m_ballistic", "nuke_build_another", p.money >= SILO_COST_MONEY and p.uranium >= SILO_COST_URANIUM))
+	acts.append(h._act("ЕЩЁ ШАХТА\n3500 $", "icon_m_ballistic", "nuke_build_another", p.money >= SILO_COST_MONEY and p.uranium >= SILO_COST_URANIUM))
 
 	if hp < max_hp:
-		acts.append(h._act("РЕМОНТ\n400$", "icon_restore", "nuke_repair", p.money >= SILO_REPAIR_COST))
+		acts.append(h._act("РЕМОНТ\n400 $", "icon_restore", "nuke_repair", p.money >= SILO_REPAIR_COST))
 
-	var dact = h._act("СНОС\n+1750$", "icon_close", "nuke_demolish", true)
+	var dact = h._act("СНОС\n+1750 $", "icon_close", "nuke_demolish", true)
 	dact["red"] = true
 	acts.append(dact)
 
-	acts.append(h._act("ЗАКРЫТЬ ^^", "icon_close", "nuke_close", true))
+	acts.append(h._act("ЗАКРЫТЬ", "icon_close", "nuke_close", true))
 	h._fill_acts("nuclear_silo_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
@@ -840,10 +843,10 @@ func _update_targeting_card() -> void:
 
 	var acts: Array = []
 	var has_tgt = target_point != Vector2.INF
-	acts.append(h._act("ПУСК МБР! >w<", "icon_target", "nuke_launch_confirm", has_tgt))
+	acts.append(h._act("ПУСК МБР", "icon_target", "nuke_launch_confirm", has_tgt))
 	if has_tgt:
-		acts.append(h._act("СБРОС\nЦЕЛИ", "icon_refresh", "nuke_target_reset", true))
-	acts.append(h._act("ОТМЕНА ^^", "icon_close", "nuke_cancel_target", true))
+		acts.append(h._act("СБРОС ЦЕЛИ", "icon_refresh", "nuke_target_reset", true))
+	acts.append(h._act("ОТМЕНА", "icon_close", "nuke_cancel_target", true))
 	h._fill_acts("nuclear_targeting_acts", acts)
 
 # -------------------------------------------------------------
@@ -895,8 +898,8 @@ class NuclearWorldLayer extends Node2D:
 					mod.cancel_placement()
 					get_viewport().set_input_as_handled()
 					return
-				elif mod.is_targeting:
-					mod._cancel_targeting()
+				elif mod.is_targeting or mod.selected_fac != null:
+					mod.close_all()
 					get_viewport().set_input_as_handled()
 					return
 
@@ -918,8 +921,8 @@ class NuclearWorldLayer extends Node2D:
 				mod.cancel_placement()
 				get_viewport().set_input_as_handled()
 				return
-			elif mod.is_targeting:
-				mod._cancel_targeting()
+			elif mod.is_targeting or mod.selected_fac != null:
+				mod.close_all()
 				get_viewport().set_input_as_handled()
 				return
 

@@ -52,6 +52,24 @@ var gtime: float = 0.0
 var shake_cd: float = 0.0
 var lamp_t: float = 0.0
 
+const BuildPanel = preload("res://ui/ui24/build_panel.gd")
+
+func close_all() -> void:
+	is_placing = false
+	is_targeting = false
+	targeting_fac = null
+	selected_fac = null
+	if main_ref != null:
+		if "selected_fac" in main_ref:
+			main_ref.selected_fac = null
+		if main_ref.has_method("_deselect"):
+			main_ref._deselect()
+		if main_ref.hud != null:
+			main_ref.hud.hide_ops()
+			main_ref.hud.set_key_pressed(CELL_KEY, false)
+	if ClassDB.class_exists("UiKit"):
+		UiKit.snd("ui_close")
+
 func init_mod(mm: Node) -> void:
 	mm_ref = mm
 	if mm.has_method("register_hook"):
@@ -109,6 +127,9 @@ func _ensure_hud(main: Node, world: Node) -> void:
 					var lbl: Label = main.hud.key_labels[CELL_KEY] as Label
 					if lbl != null:
 						lbl.text = "СОЛНЦЕПЁК"
+						lbl.clip_text = true
+						lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+						BuildPanel.fit(lbl, BuildPanel.CELL_W, BuildPanel.KEY_FONT)
 		if not main.hud.action.is_connected(_on_hud_action):
 			main.hud.action.connect(_on_hud_action)
 
@@ -183,8 +204,8 @@ func _on_hud_action(nm: String) -> void:
 				f_fire = main_ref.selected_fac as Facility
 			if f_fire != null and _is_batt(f_fire):
 				_start_targeting(f_fire)
-		"thermo_cancel":
-			_cancel_targeting()
+		"cancel_select", "thermo_close", "thermo_cancel":
+			close_all()
 		"thermo_repair":
 			var f_rep: Facility = selected_fac
 			if f_rep == null and main_ref != null and "selected_fac" in main_ref:
@@ -197,12 +218,6 @@ func _on_hud_action(nm: String) -> void:
 				f_dem = main_ref.selected_fac as Facility
 			if f_dem != null and _is_batt(f_dem):
 				_demolish(f_dem)
-		"thermo_close":
-			selected_fac = null
-			if main_ref != null and "selected_fac" in main_ref:
-				main_ref.selected_fac = null
-			if main_ref != null and main_ref.hud != null:
-				main_ref.hud.hide_ops()
 
 func _is_batt(f: Facility) -> bool:
 	if f == null or not is_instance_valid(f):
@@ -417,7 +432,7 @@ func place_batt_at(cell: Vector2i) -> void:
 	if main_ref != null:
 		main_ref.selected_fac = f
 		if main_ref.hud != null:
-			main_ref.hud.show_toast("Батарея «Солнцепёк» построена! Выберите её и нажмите «ОГОНЬ! >w<».")
+			main_ref.hud.show_toast("Батарея «Солнцепёк» построена! Выберите её и нажмите «ОГОНЬ».")
 			_update_native_card(f)
 
 func _repair(f: Facility) -> void:
@@ -448,15 +463,10 @@ func _demolish(f: Facility) -> void:
 		world_ref.remove_object(f.main_obj)
 	world_ref.mil.facilities.erase(f)
 	batts.erase(f)
-	selected_fac = null
-	if targeting_fac == f:
-		targeting_fac = null
-		is_targeting = false
-	if main_ref != null and "selected_fac" in main_ref:
-		main_ref.selected_fac = null
 	if main_ref != null and main_ref.hud != null:
 		main_ref.hud.show_toast("Батарея демонтирована (+%d $ возврат)." % BATT_REFUND)
-		main_ref.hud.hide_ops()
+	close_all()
+
 	UiKit.snd("ui_select")
 
 # ---------------------------------------------------------------- огонь
@@ -474,17 +484,13 @@ func _start_targeting(f: Facility) -> void:
 		main_ref.selected_fac = f
 	_update_targeting_card()
 	if main_ref != null and main_ref.hud != null:
-		main_ref.hud.show_toast("БАТАРЕЯ «СОЛНЦЕПЁК»: кликните по цели на карте (дальность %d–%d). ЛКМ — залп! >w<" % [int(RANGE_MIN), int(RANGE_MAX)])
+		main_ref.hud.show_toast("БАТАРЕЯ «СОЛНЦЕПЁК»: выберите цель на карте (дальность %d–%d). ЛКМ — залп!" % [int(RANGE_MIN), int(RANGE_MAX)])
 	UiKit.snd("ui_select")
 
 func _cancel_targeting() -> void:
-	is_targeting = false
-	targeting_fac = null
-	if selected_fac != null and is_instance_valid(selected_fac) and _is_batt(selected_fac):
-		_update_native_card(selected_fac)
-	elif main_ref != null and main_ref.hud != null:
-		main_ref.hud.hide_ops()
-	UiKit.snd("ui_select")
+	close_all()
+	if main_ref != null and main_ref.hud != null:
+		main_ref.hud.show_toast("Наведение «Солнцепёка» отменено.")
 
 func try_fire_at(wpos: Vector2) -> void:
 	if targeting_fac == null or not is_instance_valid(targeting_fac):
@@ -784,15 +790,15 @@ func _update_native_card(f: Facility) -> void:
 	var acts: Array = []
 	if st == ST_READY:
 		var can_fire: bool = p.money >= SALVO_COST_MONEY and p.metal >= SALVO_COST_METAL
-		acts.append(h._act("ОГОНЬ! >w<\n%d$ · %dм" % [SALVO_COST_MONEY, SALVO_COST_METAL], "icon_target", "thermo_fire", can_fire))
+		acts.append(h._act("ОГОНЬ\n%d $ · %d М" % [SALVO_COST_MONEY, SALVO_COST_METAL], "icon_target", "thermo_fire", can_fire))
 	elif st == ST_RELOAD:
 		acts.append(h._act("ЗАРЯЖАНИЕ\n%s" % h._mmss(left_s), "icon_restore", "none", false))
 	elif st == ST_AIM:
-		acts.append(h._act("НАВЕДЕНИЕ...", "icon_target", "none", false))
+		acts.append(h._act("НАВЕДЕНИЕ", "icon_target", "none", false))
 	else:
-		acts.append(h._act("ЗАЛП!", "icon_target", "none", false))
+		acts.append(h._act("ЗАЛП", "icon_target", "none", false))
 
-	acts.append(h._act("ЕЩЁ БАТАРЕЯ\n%d$" % BATT_COST_MONEY, "icon_mlrs", "thermo_build_another", p.money >= BATT_COST_MONEY and p.metal >= BATT_COST_METAL))
+	acts.append(h._act("ЕЩЁ БАТАРЕЯ\n%d $" % BATT_COST_MONEY, "icon_mlrs", "thermo_build_another", p.money >= BATT_COST_MONEY and p.metal >= BATT_COST_METAL))
 
 	if f.hp < BATT_MAX_HP:
 		acts.append(h._act("РЕМОНТ\n%d $" % BATT_REPAIR_COST, "icon_restore", "thermo_repair", p.money >= BATT_REPAIR_COST))
@@ -801,7 +807,7 @@ func _update_native_card(f: Facility) -> void:
 	dact["red"] = true
 	acts.append(dact)
 
-	acts.append(h._act("ЗАКРЫТЬ ^^", "icon_close", "thermo_close", true))
+	acts.append(h._act("ЗАКРЫТЬ", "icon_close", "thermo_close", true))
 	h._fill_acts("thermo_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
@@ -812,7 +818,7 @@ func _update_targeting_card() -> void:
 	h._set_info("ЗОНА ПОРАЖЕНИЯ: РАДИУС %d ПИКС. · ДАЛЬНОСТЬ %d–%d ПИКС." % [int(SPREAD_R * 2.0), int(RANGE_MIN), int(RANGE_MAX)], false)
 	h.ops_detail.visible = false
 	var acts: Array = []
-	acts.append(h._act("ОТМЕНА ^^", "icon_close", "thermo_cancel", true))
+	acts.append(h._act("ОТМЕНА", "icon_close", "thermo_cancel", true))
 	h._fill_acts("thermo_target_acts", acts)
 
 # ---------------------------------------------------------------- отрисовка
@@ -1098,8 +1104,8 @@ class ThermoWorldLayer extends Node2D:
 					mod.cancel_placement()
 					get_viewport().set_input_as_handled()
 					return
-				elif mod.is_targeting:
-					mod._cancel_targeting()
+				elif mod.is_targeting or mod.selected_fac != null:
+					mod.close_all()
 					get_viewport().set_input_as_handled()
 					return
 
@@ -1121,8 +1127,8 @@ class ThermoWorldLayer extends Node2D:
 						mod.cancel_placement()
 						get_viewport().set_input_as_handled()
 						return
-					elif mod.is_targeting:
-						mod._cancel_targeting()
+					elif mod.is_targeting or mod.selected_fac != null:
+						mod.close_all()
 						get_viewport().set_input_as_handled()
 						return
 			else:

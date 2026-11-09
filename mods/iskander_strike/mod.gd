@@ -189,8 +189,13 @@ func _on_hud_action(action_name: String) -> void:
 		"iskander_demolish":
 			if selected_fac != null and is_instance_valid(selected_fac):
 				demolish_tel(selected_fac)
-		"iskander_cancel_target":
+		"cancel_select", "iskander_close", "iskander_cancel_target":
 			cancel_targeting()
+			selected_fac = null
+			if main_ref != null and "selected_fac" in main_ref:
+				main_ref.selected_fac = null
+			if main_ref != null and main_ref.hud != null:
+				main_ref.hud.hide_ops()
 		"iskander_repair":
 			if selected_fac != null and is_instance_valid(selected_fac):
 				var p = world_ref.player
@@ -201,12 +206,6 @@ func _on_hud_action(action_name: String) -> void:
 						UiKit.snd("ui_build")
 					if main_ref != null and main_ref.hud != null:
 						main_ref.hud.show_toast("Комплекс ОТРК «Искандер-М» полностью отремонтирован!")
-		"iskander_close":
-			selected_fac = null
-			if main_ref != null and "selected_fac" in main_ref:
-				main_ref.selected_fac = null
-			if main_ref != null and main_ref.hud != null:
-				main_ref.hud.hide_ops()
 
 func toggle_placement() -> void:
 	if is_placing:
@@ -403,7 +402,7 @@ func _update_native_card(f: Facility) -> void:
 
 	var acts: Array = []
 	if has_missile:
-		acts.append(h._act("УДАР 9М723! >w<", "icon_target", "iskander_target", true))
+		acts.append(h._act("УДАР 9М723", "icon_target", "iskander_target", true))
 	elif is_reloading:
 		acts.append(h._act("ЗАРЯЖАНИЕ\n%s" % h._mmss(rem_t), "icon_restore", "none", false))
 	else:
@@ -417,7 +416,7 @@ func _update_native_card(f: Facility) -> void:
 	dact["red"] = true
 	acts.append(dact)
 
-	acts.append(h._act("ЗАКРЫТЬ ^^", "icon_close", "iskander_close", true))
+	acts.append(h._act("ЗАКРЫТЬ", "icon_close", "iskander_close", true))
 	h._fill_acts("iskander_acts_%d" % f.id, acts)
 
 func _update_targeting_card() -> void:
@@ -434,8 +433,8 @@ func _update_targeting_card() -> void:
 
 	var acts: Array = []
 	var has_tgt = target_point != Vector2.INF
-	acts.append(h._act("ПУСК 9М723! >w<", "icon_target", "iskander_launch_confirm", has_tgt))
-	acts.append(h._act("ОТМЕНА ^^", "icon_close", "iskander_cancel_target", true))
+	acts.append(h._act("ПУСК 9М723", "icon_target", "iskander_launch_confirm", has_tgt))
+	acts.append(h._act("ОТМЕНА", "icon_close", "iskander_cancel_target", true))
 	h._fill_acts("iskander_target_acts", acts)
 
 func _on_match_tick(main: Node, world: Node, delta: float) -> void:
