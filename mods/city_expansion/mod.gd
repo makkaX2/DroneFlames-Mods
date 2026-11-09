@@ -23,9 +23,8 @@ func init_mod(mm: Node) -> void:
 	print("[CityExpansion] Native mod initialized.")
 
 func cleanup_mod(mm: Node) -> void:
-	var main: Variant = get("main_ref")
-	if main != null and is_instance_valid(main) and main.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
-		mm.call("cleanup_mod_hud", main.hud, Callable(self, "_on_hud_action"), ["city_expand_tool"])
+	if main_ref != null and is_instance_valid(main_ref) and main_ref.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
+		mm.call("cleanup_mod_hud", main_ref.hud, Callable(self, "_on_hud_action"), ["city_expand_tool"])
 	selected_city = null
 	last_ops_key = ""
 	if mm and mm.has_method("unregister_hook"):
@@ -91,6 +90,10 @@ func _on_match_tick(main: Node, world: Node, _delta: float) -> void:
 
 	if main == null or main.hud == null or world == null:
 		return
+	if world.player != null:
+		for city: City in world.cities:
+			if city != null and city.country_id == world.player.id:
+				_update_population(city, _delta)
 
 	var ops_k = String(main.hud._ops_key)
 	if ops_k.begins_with("city"):
@@ -128,6 +131,7 @@ func _enhance_city_card(c: City) -> void:
 		c.buildings,
 		c.radius
 	]
+	sub_info += Loc.t("\nЖИТЕЛИ: %d / %d") % [c.residents, c.housing_capacity]
 	h.ops_sub.visible = true
 	h.ops_sub.text = sub_info
 
@@ -153,6 +157,9 @@ func _execute_city_expand(c: City) -> void:
 		return
 
 	p.money -= cost
+	if c.housing_capacity <= 0:
+		c.housing_capacity = maxi(1200, c.buildings * 500)
+		c.residents = int(float(c.housing_capacity) * 0.6)
 
 	# 1. Повышение параметров города
 	c.level += 1
@@ -162,6 +169,8 @@ func _execute_city_expand(c: City) -> void:
 	c.garrison = c.garrison_max
 	c.claim_done = false
 	c.frontier = [Vector3i(c.center.x, c.center.y, 0)]
+	c.housing_capacity += (2 + mini(c.level, 3)) * 600
+	c.residents = mini(c.housing_capacity, c.residents + 250)
 
 	# 2. Запуск экспансии границ города через оригинальный алгоритм
 	if world_ref.has_method("_grow_initial"):
@@ -182,6 +191,17 @@ func _execute_city_expand(c: City) -> void:
 	if main_ref != null and main_ref.hud != null:
 		main_ref.hud.show_toast("Город %s расширен до ур. %d! Новые территории присоединены, гарнизон +150." % [c.name, c.level])
 		main_ref.hud.show_city(c)
+
+
+func _update_population(c: City, delta: float) -> void:
+	if c.housing_capacity <= 0:
+		c.housing_capacity = maxi(1200, c.buildings * 500)
+		c.residents = int(float(c.housing_capacity) * 0.6)
+	c.population_growth_clock += delta
+	if c.population_growth_clock >= 30.0:
+		var cycles: int = int(c.population_growth_clock / 30.0)
+		c.population_growth_clock = fmod(c.population_growth_clock, 30.0)
+		c.residents = mini(c.housing_capacity, c.residents + cycles * 10)
 
 func _execute_city_infra(c: City) -> void:
 	if world_ref == null or world_ref.player == null:
@@ -254,7 +274,7 @@ func _spawn_new_quarters(c: City, count: int) -> void:
 				var cell = c.center + Vector2i(dx, dy)
 				if not d.inside(cell.x, cell.y):
 					continue
-				if d.get_owner(cell.x, cell.y) != c.country_id:
+				if d.get_owner_id(cell.x, cell.y) != c.country_id:
 					continue
 				var b = d.get_biome(cell.x, cell.y)
 				if Biome.is_water(b):

@@ -64,11 +64,11 @@ func cleanup_mod(mm: Node) -> void:
 func _create_and_register_icons(mm: Node) -> void:
 	if mm == null or not mm.has_method("register_texture"):
 		return
-
+	
 	# Создаем четкую пиксельную иконку треугольного БПЛА «Герань-2» с винглетами
 	var img: Image = Image.create(32, 32, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-
+	
 	# Отрисовка дельтовидного корпуса (Шахед-136 / Герань-2)
 	for y in range(4, 28):
 		var progress: float = float(y - 4) / 23.0
@@ -180,7 +180,7 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 func _tick_factory_card(main: Node, world: Node, delta: float) -> void:
 	if main.selected_fac == null or main.selected_fac.kind != Facility.Kind.DRONE_FACTORY:
 		return
-
+	
 	var fac: Facility = main.selected_fac
 	if main.hud == null or main.hud.fac_row == null:
 		return
@@ -310,11 +310,11 @@ func _tick_drone_production(world: GameWorld, delta: float) -> void:
 				fac.producing = false
 				fac.prod_t = 0.0
 				factory_orders[fac.id] = false
-
+				
 				# Добавляем готовую Герань на склад страны
 				var cid: int = fac.country_id
 				geran_stock[cid] = int(geran_stock.get(cid, 0)) + 1
-
+				
 				world.fx.spawn("build_spark", fac.center_px(), 8)
 				Sfx.play("ui_build", fac.center_px())
 				if world.player != null and cid == world.player.id:

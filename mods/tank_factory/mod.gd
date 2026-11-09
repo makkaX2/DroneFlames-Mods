@@ -78,9 +78,8 @@ func init_mod(mm: Node) -> void:
 	print("[TankFactory] Native mod initialized.")
 
 func cleanup_mod(mm: Node) -> void:
-	var main: Variant = get("main_ref")
-	if main != null and is_instance_valid(main) and main.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
-		mm.call("cleanup_mod_hud", main.hud, Callable(self, "_on_hud_action"), ["tank_factory"])
+	if main_ref != null and is_instance_valid(main_ref) and main_ref.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
+		mm.call("cleanup_mod_hud", main_ref.hud, Callable(self, "_on_hud_action"), ["tank_factory"])
 	_cleanup_nodes()
 	if mm and mm.has_method("unregister_hook"):
 		mm.call("unregister_hook", "on_world_started", Callable(self, "_on_world_started"))
@@ -225,7 +224,7 @@ func can_place_at(cell: Vector2i) -> bool:
 			var cy = cell.y + dy
 
 			# Проверка принадлежности территории игроку
-			if d.get_owner(cx, cy) != player.id:
+			if d.get_owner_id(cx, cy) != player.id:
 				return false
 
 			# Проверка на сушу (не вода)

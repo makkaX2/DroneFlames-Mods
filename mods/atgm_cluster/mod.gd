@@ -28,9 +28,8 @@ func init_mod(mm: Node) -> void:
 	print("[ATGMCluster] Native mod initialized.")
 
 func cleanup_mod(mm: Node) -> void:
-	var main: Variant = get("main_ref")
-	if main != null and is_instance_valid(main) and main.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
-		mm.call("cleanup_mod_hud", main.hud, Callable(self, "_on_hud_action"), ["atgm_cluster"])
+	if main_ref != null and is_instance_valid(main_ref) and main_ref.hud != null and mm != null and mm.has_method("cleanup_mod_hud"):
+		mm.call("cleanup_mod_hud", main_ref.hud, Callable(self, "_on_hud_action"), ["atgm_cluster"])
 	_cleanup_nodes()
 	if mm and mm.has_method("unregister_hook"):
 		mm.call("unregister_hook", "on_world_started", Callable(self, "_on_world_started"))

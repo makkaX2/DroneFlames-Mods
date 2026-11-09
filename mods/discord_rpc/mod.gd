@@ -1,4 +1,3 @@
-class_name DiscordRpcMod
 extends RefCounted
 
 var mm_ref: Node = null
