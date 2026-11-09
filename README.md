@@ -1,5 +1,5 @@
 # 🔥 DroneFlames — Каталог Модификаций (Community Mods)
-### Официальный репозиторий модов для DroneFlames PC Port by @CryptoAngelazaz
+### Официальный репозиторий модов для DroneFlames PC Port by @droneflamesmod
 
 Добро пожаловать в официальный открытый репозиторий модификаций для ПК-порта **DroneFlames**!  
 Здесь собраны модификации сообщества, новые карты, текстурпаки, разделы интерфейса и пользовательские сценарии, которые загружаются прямо в игре без перезапуска.
@@ -10,7 +10,7 @@
 
 1. **Создайте Pull Request** в этот репозиторий с папкой вашего мода в каталоге `mods/<your_mod_id>/` и архивом `<your_mod_id>.dfmod`.
 2. **Либо напишите напрямую разработчику порта:**
-   - **Автор ПК-порта:** `@CryptoAngelazaz`
+   - **Автор ПК-порта:** `@droneflamesmod`
    - **Telegram-канал сообщества:** [t.me/droneflamesmod](https://t.me/droneflamesmod)
    - **GitHub:** [@makkaX2](https://github.com/makkaX2)
 
@@ -127,7 +127,7 @@ func _generate_desert_map(world_data: RefCounted, settings: Resource) -> void:
 
 ## 🗂️ Где находятся моды на компьютере игрока
 
-- **AppData:** `%APPDATA%\Godot\app_userdata\DroneFlames (PC Port by @CryptoAngelazaz)\mods\`
+- **AppData:** `%APPDATA%\Godot\app_userdata\DroneFlames (PC Port by @droneflamesmod)\mods\`
 - **Портативная версия:** Папка `mods\` рядом с исполняемым файлом `DroneFlames.exe`.
 - **В игре:** Раздел **«МОДИФИКАЦИИ»** в главном меню (кнопка *«Открыть папку модов»* откроет каталог в Проводнике Windows).
 

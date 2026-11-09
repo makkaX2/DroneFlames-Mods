@@ -1,6 +1,6 @@
 """
 Discord Rich Presence Bridge for DroneFlames PC Port
-Author: @CryptoAngelazaz
+Author: @good_boy_irl & @CryptoAngelazaz & @CryptoAngelazaz
 Connects to Discord IPC Named Pipe and mirrors presence from discord_state.json.
 """
 

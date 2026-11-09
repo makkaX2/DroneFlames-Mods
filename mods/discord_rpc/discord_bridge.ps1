@@ -1,6 +1,6 @@
 <#
 Discord Rich Presence PowerShell Bridge for DroneFlames PC Port
-Author: @CryptoAngelazaz
+Author: @good_boy_irl & @CryptoAngelazaz & @CryptoAngelazaz
 #>
 
 param(

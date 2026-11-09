@@ -219,7 +219,7 @@ func _build_menu_state() -> Dictionary:
 		},
 		"assets": {
 			"large_image": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/assets/droneflames_logo.png",
-			"large_text": "DroneFlames (PC Port by @CryptoAngelazaz)",
+			"large_text": "DroneFlames (PC Port by @droneflamesmod)",
 			"small_image": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/assets/profile_avatar.png",
 			"small_text": "Профиль: %s" % player_name
 		},
@@ -345,7 +345,7 @@ func _build_ingame_state() -> Dictionary:
 		},
 		"assets": {
 			"large_image": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/assets/droneflames_logo.png",
-			"large_text": "DroneFlames (PC Port by @CryptoAngelazaz)",
+			"large_text": "DroneFlames (PC Port by @droneflamesmod)",
 			"small_image": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/assets/profile_avatar.png",
 			"small_text": small_txt.left(120)
 		},
