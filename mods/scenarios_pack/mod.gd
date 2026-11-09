@@ -1,6 +1,6 @@
 extends RefCounted
 ## Модификация «Особые сценарии и карты»
-## Автор: @good_boy_irl
+## Автор: @CryptoAngelazaz
 ##
 ## Возможности:
 ## - 2 новые уникальные карты: «АРКТИКА» (Ледниковый период) и «ВУЛКАНЫ» (Огненный архипелаг)
@@ -44,7 +44,7 @@ var _hook_start: Callable
 var _hook_tick: Callable
 
 func init_mod(mod_mgr: Node) -> void:
-	print("[ScenariosPack] Initializing Special Scenarios & Maps Mod by @good_boy_irl...")
+	print("[ScenariosPack] Initializing Special Scenarios & Maps Mod by @CryptoAngelazaz...")
 	
 	# Регистрация карты «АРКТИКА»
 	if mod_mgr.has_method("register_map_type"):

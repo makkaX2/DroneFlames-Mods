@@ -1,5 +1,5 @@
 # 🔥 DroneFlames — Каталог Модификаций (Community Mods)
-### Официальный репозиторий модов для DroneFlames PC Port by @good_boy_irl
+### Официальный репозиторий модов для DroneFlames PC Port by @CryptoAngelazaz
 
 Добро пожаловать в официальный открытый репозиторий модификаций для ПК-порта **DroneFlames**!  
 Здесь собраны модификации сообщества, новые карты, текстурпаки, разделы интерфейса и пользовательские сценарии, которые загружаются прямо в игре без перезапуска.
@@ -10,7 +10,7 @@
 
 1. **Создайте Pull Request** в этот репозиторий с папкой вашего мода в каталоге `mods/<your_mod_id>/` и архивом `<your_mod_id>.dfmod`.
 2. **Либо напишите напрямую разработчику порта:**
-   - **Автор ПК-порта:** `@good_boy_irl`
+   - **Автор ПК-порта:** `@CryptoAngelazaz`
    - **Telegram-канал сообщества:** [t.me/droneflamesmod](https://t.me/droneflamesmod)
    - **GitHub:** [@makkaX2](https://github.com/makkaX2)
 
@@ -39,7 +39,7 @@ mods/my_awesome_mod/
   "id": "oasis_map",
   "name": "Карта: Оазис в Пустыне",
   "version": "1.0.0",
-  "author": "good_boy_irl",
+  "author": "CryptoAngelazaz",
   "type": "map",
   "description": "Новый тип карты: бескрайняя песчаная пустыня с плодородными оазисами и нефтяными вышками.",
   "details": "Добавляет в меню выбора карт новый уникальный тип ландшафта 'ПУСТЫНЯ'.\n• 85% песчаных дюн и каньонов\n• Оазисы вокруг водоёмов с пресной водой\n• Богатые залежи нефти и редких руд\n• Подходит для одиночной игры и мультиплеера",
@@ -127,11 +127,11 @@ func _generate_desert_map(world_data: RefCounted, settings: Resource) -> void:
 
 ## 🗂️ Где находятся моды на компьютере игрока
 
-- **AppData:** `%APPDATA%\Godot\app_userdata\DroneFlames (PC Port by @good_boy_irl)\mods\`
+- **AppData:** `%APPDATA%\Godot\app_userdata\DroneFlames (PC Port by @CryptoAngelazaz)\mods\`
 - **Портативная версия:** Папка `mods\` рядом с исполняемым файлом `DroneFlames.exe`.
 - **В игре:** Раздел **«МОДИФИКАЦИИ»** в главном меню (кнопка *«Открыть папку модов»* откроет каталог в Проводнике Windows).
 
 ---
 
-© 2026 DroneFlames PC Port. Автор порта: @good_boy_irl.
+© 2026 DroneFlames PC Port. Автор порта: @CryptoAngelazaz.
 

@@ -1,6 +1,6 @@
 extends RefCounted
 ## Модификация «Карта: Зона Отчуждения (ЧАЭС)»
-## Автор: @good_boy_irl & Community
+## Автор: @CryptoAngelazaz & Community
 ## Уникальный тип карты с реакторной зоной, Рыжим лесом, руинами и кратерами
 
 var _mod_id: String = "chernobyl_zone"
