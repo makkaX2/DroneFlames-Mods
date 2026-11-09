@@ -72,18 +72,18 @@ func _ensure_hud(main: Node, world: Node) -> void:
 	main_ref = main
 	world_ref = world
 
-	# 1. Встраивание слота МБР во вкладку «УДАРЫ» (Tab 2) нижней панели
-	if main.hud != null and main.hud.pages.size() > 2:
-		var strike_grid = main.hud.pages[2] as GridContainer
-		if strike_grid != null:
+	# 1. Встраивание слота МБР во вкладку «АРМИЯ» (Tab 4) нижней панели
+	if main.hud != null and main.hud.pages.size() > 4:
+		var army_grid = main.hud.pages[4] as GridContainer
+		if army_grid != null:
 			var cell = main.hud.keys.get("nuclear_silo") as Control
 			if cell != null and is_instance_valid(cell):
-				if cell.get_parent() != strike_grid:
+				if cell.get_parent() != army_grid:
 					cell.get_parent().remove_child(cell)
-					strike_grid.add_child(cell)
+					army_grid.add_child(cell)
 			elif not main.hud.keys.has("nuclear_silo"):
 				cell = main.hud._cell("nuclear_silo", "icon_m_ballistic", true)
-				strike_grid.add_child(cell)
+				army_grid.add_child(cell)
 			if main.hud.key_labels.has("nuclear_silo"):
 				var lbl = main.hud.key_labels["nuclear_silo"] as Label
 				if lbl != null:
@@ -112,15 +112,13 @@ func _ensure_hud(main: Node, world: Node) -> void:
 func _on_world_started(main: Node, world: Node) -> void:
 	_cleanup_nodes()
 	_ensure_hud(main, world)
-	print("[NuclearStrike] Injected nuclear_silo into Strikes tab and world layers created.")
+	print("[NuclearStrike] Injected nuclear_silo into Army tab and world layers created.")
 
-func _on_nuke_hud_button() -> void:
+func _on_nuke_sheet_target() -> void:
 	if is_placing:
 		cancel_placement()
-		return
 	if is_targeting:
 		_cancel_targeting()
-		return
 
 	var ready_silo: Facility = null
 	var any_silo: Facility = null
@@ -149,7 +147,10 @@ func _on_nuke_hud_button() -> void:
 		if main_ref != null and main_ref.hud != null:
 			main_ref.hud.show_toast("Шахта МБР пуста. Закажите сборку термоядерной боеголовки!")
 	else:
-		start_placement()
+		if main_ref != null and main_ref.hud != null:
+			main_ref.hud.show_toast("Нет шахты МБР! Постройте шахтный комплекс во вкладке АРМИЯ.")
+		if ClassDB.class_exists("UiKit"):
+			UiKit.snd("ui_error")
 
 func _on_hud_action(nm: String) -> void:
 	match nm:
@@ -157,10 +158,15 @@ func _on_hud_action(nm: String) -> void:
 			if main_ref != null and main_ref.hud != null:
 				main_ref.hud.show_tip(
 					"Термоядерный удар МБР «Сармат»",
-					"Стратегический комплекс шахтного базирования. Клик по кнопке при готовой ракете активирует наведение удара. Если ракеты нет — открывает карточку шахты. Если шахты нет — постройка (3500 $ и 10 урана).",
+					"Стратегический комплекс шахтного базирования. Постройка: %d $ и %d урана. Боеголовка снаряжается в шахте." % [SILO_COST_MONEY, SILO_COST_URANIUM],
 					""
 				)
-			_on_nuke_hud_button()
+			if is_placing:
+				cancel_placement()
+			else:
+				start_placement()
+		"nuke_sheet_target":
+			_on_nuke_sheet_target()
 		"nuke_craft":
 			var f_c = selected_fac if selected_fac != null else (main_ref.selected_fac as Facility if main_ref != null and "selected_fac" in main_ref else null)
 			if f_c != null and _is_silo(f_c):
@@ -226,9 +232,9 @@ func _on_match_tick(main: Node, world: Node, delta: float) -> void:
 	if main != null:
 		if main.hud == null or not main.hud.keys.has("nuclear_silo") or world_layer == null:
 			_ensure_hud(main, world)
-		elif main.hud.pages.size() > 2 and main.hud.keys.has("nuclear_silo"):
+		elif main.hud.pages.size() > 4 and main.hud.keys.has("nuclear_silo"):
 			var cell = main.hud.keys["nuclear_silo"]
-			if cell != null and is_instance_valid(cell) and cell.get_parent() != main.hud.pages[2]:
+			if cell != null and is_instance_valid(cell) and cell.get_parent() != main.hud.pages[4]:
 				_ensure_hud(main, world)
 
 	var ts: float = 1.0
