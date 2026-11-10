@@ -290,7 +290,7 @@ func _is_silo(f: Facility) -> bool:
 		return false
 	if f.army_build == "nuclear_silo" or f.lower_sprite == "nuclear_silo" or bool(f.get_meta("is_nuclear_silo", false)):
 		f.kind = Facility.Kind.CIV_FACTORY
-	f.halted = true # Отключаем генерацию денег
+		f.halted = true # Отключаем генерацию денег
 		f.set_meta("is_nuclear_silo", true)
 		f.set_meta("mod_facility", true)
 		f.moving = false
