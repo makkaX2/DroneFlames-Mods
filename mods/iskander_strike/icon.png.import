@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://crap3fouxl2g0"
-path="res://.godot/imported/icon.png-dea4b880908a3d186ecf19aaed5cb88e.ctex"
+uid="uid://bm4cjav78fq17"
+path="res://.godot/imported/icon.png-94b96ff1f614ac4f4a3e2938de88d3fd.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://DroneFlames-Mods/mods/iskander_strike/icon.png"
-dest_files=["res://.godot/imported/icon.png-dea4b880908a3d186ecf19aaed5cb88e.ctex"]
+source_file="res://mods/iskander_strike/icon.png"
+dest_files=["res://.godot/imported/icon.png-94b96ff1f614ac4f4a3e2938de88d3fd.ctex"]
 
 [params]
 

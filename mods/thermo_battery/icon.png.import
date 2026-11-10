@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dcqkekul7vw3k"
-path="res://.godot/imported/icon.png-2d429d628a80df2584bf86adedb7b8d3.ctex"
+uid="uid://cujp03tupqng2"
+path="res://.godot/imported/icon.png-4dbab34341c9d6fa61c4bb4e7cbf7399.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://DroneFlames-Mods/mods/thermo_battery/icon.png"
-dest_files=["res://.godot/imported/icon.png-2d429d628a80df2584bf86adedb7b8d3.ctex"]
+source_file="res://mods/thermo_battery/icon.png"
+dest_files=["res://.godot/imported/icon.png-4dbab34341c9d6fa61c4bb4e7cbf7399.ctex"]
 
 [params]
 
