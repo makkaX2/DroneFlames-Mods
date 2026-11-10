@@ -228,22 +228,58 @@ func can_place_at(cell: Vector2i) -> bool:
 	if player == null:
 		return false
 
+	var my_rect = Rect2i(cell, FACTORY_SIZE)
+
+	# 1. Защита от наложения построек друг на друга (стакинг)
+	if world_ref.mil != null and "facilities" in world_ref.mil:
+		for other_f in world_ref.mil.facilities:
+			if other_f == null or not is_instance_valid(other_f):
+				continue
+			if "hp" in other_f and other_f.hp <= 0.0:
+				continue
+			var other_rect = Rect2i(other_f.cell, other_f.size)
+			if my_rect.intersects(other_rect):
+				return false
+
+	# 2. Защита от постройки на месторождениях руды, нефти, урана и шахтах
+	if world_ref.econ != null:
+		if "deposits" in world_ref.econ and world_ref.econ.deposits is Array:
+			for dp in world_ref.econ.deposits:
+				if dp is Dictionary:
+					var dc: Vector2i = dp.get("cell", Vector2i(-999, -999))
+					var d_sz: int = int(dp.get("size", 3))
+					var h: int = d_sz / 2 + 1
+					var dep_rect = Rect2i(dc - Vector2i(h, h), Vector2i(h * 2 + 1, h * 2 + 1))
+					if my_rect.intersects(dep_rect):
+						return false
+		if world_ref.econ.has_method("deposit_free_rect"):
+			if not world_ref.econ.deposit_free_rect(my_rect):
+				return false
+
+	# 3. Проверка клеток по карте
 	for dy in range(FACTORY_SIZE.y):
 		for dx in range(FACTORY_SIZE.x):
 			var cx = cell.x + dx
 			var cy = cell.y + dy
 
-			# Проверка принадлежности территории игроку
+			# Владелец территории
 			if d.get_owner_id(cx, cy) != player.id:
 				return false
 
-			# Проверка на сушу (не вода)
+			# Проверка воды (реки / озера)
 			var b = d.get_biome(cx, cy)
 			if Biome.is_water(b):
 				return false
 
-			# Проверка на занятость другими строениями
+			# Проверка города или моста
+			if d.has_flag(cx, cy, WorldData.F_CITY | WorldData.F_BRIDGE):
+				return false
+
+			# Проверка флага занятости (разрешаем сносить деревья)
 			if d.has_flag(cx, cy, WorldData.F_OCCUPIED):
+				var idx = cy * d.w + cx
+				if world_ref.tree_at != null and world_ref.tree_at.has(idx):
+					continue
 				return false
 
 	return true
@@ -272,6 +308,7 @@ func place_factory_at(cell: Vector2i) -> void:
 	var f = Facility.new()
 	f.id = world_ref.mil.facilities.size()
 	f.kind = Facility.Kind.CIV_FACTORY
+	f.halted = true # Отключаем генерацию денег и товаров из CIV_FACTORY!
 	f.country_id = p.id
 	f.cell = cell
 	f.size = FACTORY_SIZE
@@ -396,6 +433,8 @@ func _tick_factories(delta: float) -> void:
 	for f in world_ref.mil.facilities:
 		if not (f is Facility and f.has_meta("is_tank_factory") and f.get_meta("is_tank_factory")):
 			continue
+
+		f.halted = true # Гарантируем отсутствие дохода денег от завода техники
 
 		var is_prod = bool(f.get_meta("producing", false))
 		if is_prod:
