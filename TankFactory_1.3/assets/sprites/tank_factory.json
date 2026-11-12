@@ -1,0 +1,95 @@
+{
+  "size": [
+    112,
+    36
+  ],
+  "cell_px": 4,
+  "sprites": {
+    "tank_factory": {
+      "x": 0,
+      "y": 0,
+      "w": 32,
+      "h": 36,
+      "fw": 8,
+      "fd": 6,
+      "ax": 0,
+      "ay": 36,
+      "frames": 1,
+      "fps": 0,
+      "kind": "building",
+      "out": [
+        16,
+        36
+      ],
+      "smoke": [
+        27,
+        1
+      ]
+    },
+    "tank_factory_ruin": {
+      "x": 32,
+      "y": 0,
+      "w": 32,
+      "h": 36,
+      "fw": 8,
+      "fd": 6,
+      "ax": 0,
+      "ay": 36,
+      "frames": 1,
+      "fps": 0,
+      "kind": "ruin",
+      "out": [
+        16,
+        36
+      ],
+      "smoke": [
+        27,
+        1
+      ],
+      "ruin_of": "tank_factory"
+    },
+    "tank_factory_legacy": {
+      "x": 64,
+      "y": 0,
+      "w": 24,
+      "h": 28,
+      "fw": 6,
+      "fd": 4,
+      "ax": 0,
+      "ay": 28,
+      "frames": 1,
+      "fps": 0,
+      "kind": "building",
+      "out": [
+        16,
+        36
+      ],
+      "smoke": [
+        27,
+        1
+      ]
+    },
+    "tank_factory_legacy_ruin": {
+      "x": 88,
+      "y": 0,
+      "w": 24,
+      "h": 28,
+      "fw": 6,
+      "fd": 4,
+      "ax": 0,
+      "ay": 28,
+      "frames": 1,
+      "fps": 0,
+      "kind": "ruin",
+      "out": [
+        16,
+        36
+      ],
+      "smoke": [
+        27,
+        1
+      ],
+      "ruin_of": "tank_factory"
+    }
+  }
+}
