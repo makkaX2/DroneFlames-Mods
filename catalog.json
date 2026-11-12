@@ -120,8 +120,8 @@
       "type": "gameplay",
       "description": "[ФИКС] Шахтный комплекс МБР во вкладке «АРМИЯ» и кнопка «МБР» в меню «УДАР». Производство термоядерных боеголовок, запуск МБР «Сармат» и разрушительный термоядерный удар в пиксель-арт стиле песочницы.",
       "archive": "nuclear_strike.dfmod",
-      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/nuclear_strike/nuclear_strike.dfmod",
-      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/nuclear_strike/nuclear_strike.dfmod",
+      "url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/c853a45d1500bf660c1c8cd88881fc59b8ac7565/mods/nuclear_strike/nuclear_strike.dfmod",
+      "download_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/c853a45d1500bf660c1c8cd88881fc59b8ac7565/mods/nuclear_strike/nuclear_strike.dfmod",
       "icon_url": "https://raw.githubusercontent.com/makkaX2/DroneFlames-Mods/main/mods/nuclear_strike/icon.png",
       "status": "stable"
     },
